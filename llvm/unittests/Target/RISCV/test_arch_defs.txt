@@ -1,0 +1,456 @@
+arch Rocket {
+    // Values from SchedMachineModel
+    IssueWidth = 1,
+    LoadLatency = 3,
+    MispredictPenalty = 3,
+    CompleteModel = false,
+    UnsupportedFeatures = [HasStdExtZbkb, HasStdExtZbkc, HasStdExtZbkx,
+                           HasStdExtZknd, HasStdExtZkne, HasStdExtZknh,
+                           HasStdExtZksed, HasStdExtZksh, HasStdExtZkr,
+                           HasVInstructions, HasVInstructionsI64],
+    // TODO: remove buffer size from proc resources 
+    let RocketUnitALU: ProcResource = {
+        // NumUnits is part of ProcResourceUnits, so assigning it here may not work
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitIMul: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitMem: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitB: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitMem: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitB: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    let RocketUnitFPALU: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    
+    let RocketUnitIDiv: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 1,
+    },
+    let RocketUnitFPDivSqrt: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 1,
+    },
+   
+    // All WriteRes values will be default
+    // Later definitions for the given elements will overwrite these
+    RocketUnitB.AssociatedWrites = [{Writes = [WriteJmp, WriteJal, WriteJalr, WriteJmpReg]}],
+    
+    RocketUnitALU.AssociatedWrites = [WriteIALU32, WriteIALU, WriteShiftImm32, WriteShiftImm, WriteShiftReg32, WriteShiftReg],
+    
+    RocketUnitIMul.AssociatedWrites = [
+        {WriteRes.Latency = 4, Writes = [WriteIMul, WriteIMul32]}
+    ],
+    
+    RocketUnitIDiv.AssociatedWrites = [
+        // ResourceCycles == ResourceCycles entry for this resource
+        // If a write uses multiple resources it will be present in multiple AssociatedWrites
+        {WriteRes = {ResourceCycles = 34, Latency = 34,}, Writes = [WriteIdiv32],},
+        {WriteRes = {ResourceCycles = 33, Latency = 33,}, Writes = [WriteIDiv],},
+    ],
+
+    RocketUnitMem.AssociatedWrites = [
+        // WriteRes will just be default if not set
+        {Writes = [WriteSTB, WriteSTH, WriteSTW, WriteSTD, WriteFST32, WrieFST64]},
+        {WriteRes.Latency = 3, Writes = [WriteLDB, WriteLDH]},
+        {WriteRes.Latency = 2, Writes = [WriteLDW, WriteLDD, WriteFLD32, WriteFLD64, WriteAtomicW, WriteAtomicD, WriteAtomicLDW, WriteAtomicLDD]},
+        {Writes = [WriteAtomicSTW, WriteAtomicSTD],},
+    ],
+
+    RocketUnitFPALU.AssociatedWrites = [
+        {WriteRes.Latency = 4, Writes = [WriteFAdd32, WriteFSGNJ32, WriteFMinMax32],},
+        {WriteRes.Latency = 6, Writes = [WriteFAdd64, WriteFSGNJ64, WriteFMinMax64],},
+        {WriteRes.Latency = 2, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF32ToF64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovF32ToI32, WriteFMovI32ToF32, WriteFMovF64ToI64, WriteFMovI64ToF64],},
+        {WriteRes.Latency = 5, Writes = [WriteFMul32, WriteFMA32]},
+        {WriteRes.Latency = 7, Writes = [WriteFMul64, WriteFMA64]},
+    ],
+
+    RocketUnitFPDivSqrt.AssociatedWrites = [
+        // The first and second entry could be merged, but I wanted to maintain similarity with the tablegen file
+        {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFDiv32, WriteFPDiv64]},
+        {WriteRes = {Latenyc = 20, ResourceCycles = 20}, Writes = [WriteFSqrt32]},
+        {WriteRes = {Latency = 25, ResourceCycles = 25}, Writes = [WriteFSqrt64]},
+    ],
+
+    // Predefined NoProcResource for Writes without ProcResource (TODO: unsure about this)
+    NoProcResource.AssociatedWrites = [
+        {Writes = [WriteCSR, WriteNop],},
+    ], 
+
+    // TODO: InstRW
+
+    let RA: ReadAdvance = {
+        Cycles = 0,
+    },
+
+    let UnusedRA: ReadAdvance = {
+        // Can be read one cycle earlier
+        Cycles = 1,
+        // Can be read earlier by WriteIMul and WriteIMul32 (If empty the advance is for all writes)
+        ValidWrites = [WriteIMul, WriteIMul32]
+    },
+
+    ReadJmp.ReadAdvance = RA,
+    ReadJalr.ReadAdvance = RA,
+    ReadCSR.ReadAdvance = RA,
+    ReadStoreData.ReadAdvance = RA,
+    ReadMemBase.ReadAdvance = RA,
+    ReadIALU.ReadAdvance = RA,
+    ReadIALU32.ReadAdvance = RA,
+    ReadShiftImm.ReadAdvance = RA,
+    ReadShiftImm32.ReadAdvance = RA,
+    ReadShiftReg.ReadAdvance = RA,
+    ReadShiftReg32.ReadAdvance = RA,
+    ReadIDiv.ReadAdvance = RA,
+    ReadIDiv32.ReadAdvance = RA,
+    ReadIMul.ReadAdvance = RA,
+    ReadIMul32.ReadAdvance = RA,
+    ReadAtomicWA.ReadAdvance = RA,
+    ReadAtomicWD.ReadAdvance = RA,
+    ReadAtomicDA.ReadAdvance = RA,
+    ReadAtomicDD.ReadAdvance = RA,
+    ReadAtomicLDW.ReadAdvance = RA,
+    ReadAtomicLDD.ReadAdvance = RA,
+    ReadAtomicSTW.ReadAdvance = RA,
+    ReadAtomicSTD.ReadAdvance = RA,
+    ReadFStoreData.ReadAdvance = RA,
+    ReadFMemBase.ReadAdvance = RA,
+    ReadFAdd32.ReadAdvance = RA,
+    ReadFAdd64.ReadAdvance = RA,
+    ReadFMul32.ReadAdvance = RA,
+    ReadFMul64.ReadAdvance = RA,
+    ReadFMA32.ReadAdvance = RA,
+    ReadFMA64.ReadAdvance = RA,
+    ReadFDiv32.ReadAdvance = RA,
+    ReadFDiv64.ReadAdvance = RA,
+    ReadFSqrt32.ReadAdvance = RA,
+    ReadFSqrt64.ReadAdvance = RA,
+    ReadFCmp32.ReadAdvance = RA,
+    ReadFCmp64.ReadAdvance = RA,
+    ReadFSGNJ32.ReadAdvance = RA,
+    ReadFSGNJ64.ReadAdvance = RA,
+    ReadFMinMax32.ReadAdvance = RA,
+    ReadFMinMax64.ReadAdvance = RA,
+    ReadFCvtF32ToI32.ReadAdvance = RA,
+    ReadFCvtF32ToI64.ReadAdvance = RA,
+    ReadFCvtF64ToI32.ReadAdvance = RA,
+    ReadFCvtF64ToI64.ReadAdvance = RA,
+    ReadFCvtI32ToF32.ReadAdvance = RA,
+    ReadFCvtI32ToF64.ReadAdvance = RA,
+    ReadFCvtI64ToF32.ReadAdvance = RA,
+    ReadFCvtI64ToF64.ReadAdvance = RA,
+    ReadFCvtF32ToF64.ReadAdvance = RA,
+    ReadFCvtF64ToF32.ReadAdvance = RA,
+    ReadFMovF32ToI32.ReadAdvance = RA,
+    ReadFMovI32ToF32.ReadAdvance = RA,
+    ReadFMovF64ToI64.ReadAdvance = RA,
+    ReadFMovI64ToF64.ReadAdvance = RA,
+    ReadFClass32.ReadAdvance = RA,
+    ReadFClass64.ReadAdvance = RA,
+
+    // TODO: Unsupported stuff
+}
+
+arch RocketWithBadMuls : Rocket {
+    RocketUnitIMul.AssociatedWrites = [
+        {WriteRes.Latency = 1000, Writes = [WriteIMul, WriteIMul32]}
+    ],
+}
+
+arch SiFive7 {
+    IssueWidth = 2,
+    LoadLatency = 3,
+    MispredictPenalty = 3,
+    CompleteModel = false,
+    UnsupportedFeatures = [HasStdExtZbkb, HasStdExtZbkc, HasStdExtZbkx,
+                           HasStdExtZknd, HasStdExtZkne, HasStdextZknh,
+                           HasStdExtZksed, HasStdExtZksh, HasStdExtZkr,
+                           HasVInstructions],
+
+    let SiFive7PipeA: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+
+    let SiFIve7PipeB: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+
+    let SiFive7IDiv: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 1,
+        Super = SiFive7PipeB,
+    },
+    
+    let SiFive7FDiv: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 1,
+        Super = SiFive7PipeB,
+    },
+
+    let SiFive7PipeAB: ProcResGroup = {
+        Resources = [SiFive7PipeA, SiFive7PipeB],
+    },
+    
+    let WriteSFBWriteRes: WriteRes = {
+        Latency = 3,
+        NumMicroOps = 2,
+    },
+    SiFive7PipeB.AssociatedWrites = [
+        {Writes = [WriteJmp, WriteJal, WriteJalr, WriteJmpReg]},
+        {WriteRes = WriteSFBWriteRes, Writes = [WriteSFB]},
+        {WriteRes.Latency = 3, Writes = [WriteIMul, WriteIMul32],},
+        // Other part in SiFive7IDiv definition
+        {WriteRes = {Latency = 16, ResourceCycles = 1,}, Writes = [WriteIDiv, WriteIDiv32],},
+        {WriteRes.Latency = 5, Writes = [WriteFAdd32, WriteFMul32, WriteFMA32]},
+        {WriteRes.Latency = 3, Writes = [WriteFSGNJ32, WriteFMinMax32]},
+        // TODO: what to do when latencies don't match (Error)
+        {WriteRes = {Latency = 27, ResourceCycles = 1}, Writes = [WriteFDiv32, WriteFSqrt32]},
+        {WriteRes.Latency = 7, Writes = [WriteFAdd64, WriteFMul64, WriteFMA64]},
+        {WriteRes.Latency = 3, Writes = [WriteFSGNJ64, WriteFMinMax64]},
+        {WriteRes = {Latency = 56, ResourceCycles = 1}, Writes = [WriteFDiv64, WriteFSqrt64]},
+        {WriteRes.Latency = 3, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteFCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFcvtF32ToF64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovI32ToF32, WriteFMovF32ToI32, WriteFMovI64ToF64, WriteFMovF64ToI64]},
+        {Writes = [WriteCSR]},
+    ],
+
+    SiFive7PipeA.AssociatedWrites = [
+        {WriteRes = WriteSFBWriteRes, Writes = [WriteSFB]},
+        {Writes = [WriteSTB, WriteSTH, WriteSTW, WriteSTD, WriteFST32, WriteFST64],},
+        {WriteRes.Latency = 3, Writes = [WriteLDB, WriteLDH, WriteLDW, WriteLDD]},
+        {WriteRes.Latency = 2, Writes = [WriteFLD32, WriteFLD64],},
+        {Writes = [WriteAtomicSTW, WriteAtomicSTD]},
+        {WriteRes.Latency = 3, Writes = [WriteAtomicW, WriteAtomicD, WriteAtomicLDW, WriteAtomicLDD],},
+    ],
+
+    SiFive7PipeAB.AssociatedWrites = [
+        {WriteRes.Latency = 3, Writes = [WriteIALU, WriteIALU32, WriteShiftImm, WriteShiftImm32, WriteShiftReg, WriteShiftReg32]},
+    ],
+
+    SiFive7IDiv.AssociatedWrites = [
+        {WriteRes = {Latency = 16, ResourceCycles = 15,}, Writes = [WriteIDiv, WriteIDiv32],}
+    ],
+
+    SiFive7FDiv.AssociatedWrites = [
+        {WriteRes = {Latency = 27, ResourceCycles = 27}, Writes = [WriteFDiv32, WriteFSqrt32]},
+        {WriteRes = {Latency = 56, ResourceCycles = 55}, Writes = [WriteFDiv64, WriteFSqrt64]},
+    ],
+
+    NoProcResource.AssociatedWrites = [
+        {Writes = [WriteNop]},
+    ],
+
+    // TODO: InstRW
+
+    let RA: ReadAdvance = {
+        Cycles = 0,
+    },
+
+    ReadJmp.ReadAdvance = RA,
+    ReadJalr.ReadAdvance = RA,
+    ReadCSR.ReadAdvance = RA,
+    ReadStoreData.ReadAdvance = RA,
+    ReadMemBase.ReadAdvance = RA,
+    ReadIALU.ReadAdvance = RA,
+    ReadIALU32.ReadAdvance = RA,
+    ReadShiftImm.ReadAdvance = RA,
+    ReadShiftImm32.ReadAdvance = RA,
+    ReadShiftReg.ReadAdvance = RA,
+    ReadShiftReg32.ReadAdvance = RA,
+    ReadIDiv.ReadAdvance = RA,
+    ReadIDiv32.ReadAdvance = RA,
+    ReadIMul.ReadAdvance = RA,
+    ReadIMul32.ReadAdvance = RA,
+    ReadAtomicWA.ReadAdvance = RA,
+    ReadAtomicWD.ReadAdvance = RA,
+    ReadAtomicDA.ReadAdvance = RA,
+    ReadAtomicDD.ReadAdvance = RA,
+    ReadAtomicLDW.ReadAdvance = RA,
+    ReadAtomicLDD.ReadAdvance = RA,
+    ReadAtomicSTW.ReadAdvance = RA,
+    ReadAtomicSTD.ReadAdvance = RA,
+    ReadFStoreData.ReadAdvance = RA,
+    ReadFMemBase.ReadAdvance = RA,
+    ReadFAdd32.ReadAdvance = RA,
+    ReadFAdd64.ReadAdvance = RA,
+    ReadFMul32.ReadAdvance = RA,
+    ReadFMul64.ReadAdvance = RA,
+    ReadFMA32.ReadAdvance = RA,
+    ReadFMA64.ReadAdvance = RA,
+    ReadFDiv32.ReadAdvance = RA,
+    ReadFDiv64.ReadAdvance = RA,
+    ReadFSqrt32.ReadAdvance = RA,
+    ReadFSqrt64.ReadAdvance = RA,
+    ReadFCmp32.ReadAdvance = RA,
+    ReadFCmp64.ReadAdvance = RA,
+    ReadFSGNJ32.ReadAdvance = RA,
+    ReadFSGNJ64.ReadAdvance = RA,
+    ReadFMinMax32.ReadAdvance = RA,
+    ReadFMinMax64.ReadAdvance = RA,
+    ReadFCvtF32ToI32.ReadAdvance = RA,
+    ReadFCvtF32ToI64.ReadAdvance = RA,
+    ReadFCvtF64ToI32.ReadAdvance = RA,
+    ReadFCvtF64ToI64.ReadAdvance = RA,
+    ReadFCvtI32ToF32.ReadAdvance = RA,
+    ReadFCvtI32ToF64.ReadAdvance = RA,
+    ReadFCvtI64ToF32.ReadAdvance = RA,
+    ReadFCvtI64ToF64.ReadAdvance = RA,
+    ReadFCvtF32ToF64.ReadAdvance = RA,
+    ReadFCvtF64ToF32.ReadAdvance = RA,
+    ReadFMovF32ToI32.ReadAdvance = RA,
+    ReadFMovI32ToF32.ReadAdvance = RA,
+    ReadFMovF64ToI64.ReadAdvance = RA,
+    ReadFMovI64ToF64.ReadAdvance = RA,
+    ReadFClass32.ReadAdvance = RA,
+    ReadFClass64.ReadAdvance = RA,
+
+    ReadSFB.ReadAdvance = RA,
+
+    // TODO: Unsupported extensions
+}
+
+arch SyntacoreSCR1Model {
+    IssueWidth = 1,
+    LoadLatency = 2,
+    MispredictPenalty = 3,
+    CompleteModel = false,
+    UnsupportedFeatures = [HasStdExtZbkb, HasStdExtZbkc, HasStdExtZbkx,
+                           HasStdExtZknd, HasStdExtZkne, HasStdExtZknh,
+                           HasStdExtZksed, HasStdExtZksh, HasStdExtZkr,
+                           HasVInstructions],
+
+    let SCR1_ALU: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+
+    let SCR1_LSU: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    
+    let SCR1_MUL: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+    
+    let SCR1_DIV: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+
+    let SCR1_CFU: ProcResource = {
+        NumUnits = 1,
+        BufferSize = 0,
+    },
+
+    SCR1_CFU.AssociatedWrites = [
+        {Writes = [WriteJmp, WriteJal, WriteJalr, WriteJmpReg]},
+    ],
+
+    SCR1_ALU.AssociatedWrites = [
+        {Writes = [WriteIALU32, WriteIALU, WriteShiftImm32, WriteShiftImm, WriteShiftReg32, WriteShiftReg]},
+    ],
+
+    SCR1_MUL.AssociatedWrites = [
+        {Writes = [WriteIMul, WriteIMul32]},
+    ],
+
+    SCR1_DIV.AssociatedWrites = [
+        {WriteRes = {Latency = 33, ResouceCycles = 33}, Writes = [WriteIDiv32, WriteIDiv]},
+    ],
+
+    SCR1_LSU.AssociatedWrites = [
+        {WriteRes = {Latency = 2, ResourceCycles = 2}, Writes = [WriteSTB, WriteSTH, WriteSTW, WriteSTD, WriteLDB, WriteLDH, WriteLDW, WriteLDD]},
+    ],
+
+    // TODO: let Unsupported = true
+
+    NoProcResource.AssociatedWrites = [
+        {Writes = [WriteCSR, WriteNop]},
+    ],
+
+    // TODO: InstRW
+
+    let RA: ReadAdvance = {
+        Cycles = 0,
+    },
+
+    ReadJmp.ReadAdvance = RA,
+    ReadJalr.ReadAdvance = RA,
+    ReadCSR.ReadAdvance = RA,
+    ReadStoreData.ReadAdvance = RA,
+    ReadMemBase.ReadAdvance = RA,
+    ReadIALU.ReadAdvance = RA,
+    ReadIALU32.ReadAdvance = RA,
+    ReadShiftImm.ReadAdvance = RA,
+    ReadShiftImm32.ReadAdvance = RA,
+    ReadShiftReg.ReadAdvance = RA,
+    ReadShiftReg32.ReadAdvance = RA,
+    ReadIDiv.ReadAdvance = RA,
+    ReadIDiv32.ReadAdvance = RA,
+    ReadIMul.ReadAdvance = RA,
+    ReadIMul32.ReadAdvance = RA,
+    ReadAtomicWA.ReadAdvance = RA,
+    ReadAtomicWD.ReadAdvance = RA,
+    ReadAtomicDA.ReadAdvance = RA,
+    ReadAtomicDD.ReadAdvance = RA,
+    ReadAtomicLDW.ReadAdvance = RA,
+    ReadAtomicLDD.ReadAdvance = RA,
+    ReadAtomicSTW.ReadAdvance = RA,
+    ReadAtomicSTD.ReadAdvance = RA,
+    ReadFStoreData.ReadAdvance = RA,
+    ReadFMemBase.ReadAdvance = RA,
+    ReadFAdd32.ReadAdvance = RA,
+    ReadFAdd64.ReadAdvance = RA,
+    ReadFMul32.ReadAdvance = RA,
+    ReadFMul64.ReadAdvance = RA,
+    ReadFMA32.ReadAdvance = RA,
+    ReadFMA64.ReadAdvance = RA,
+    ReadFDiv32.ReadAdvance = RA,
+    ReadFDiv64.ReadAdvance = RA,
+    ReadFSqrt32.ReadAdvance = RA,
+    ReadFSqrt64.ReadAdvance = RA,
+    ReadFCmp32.ReadAdvance = RA,
+    ReadFCmp64.ReadAdvance = RA,
+    ReadFSGNJ32.ReadAdvance = RA,
+    ReadFSGNJ64.ReadAdvance = RA,
+    ReadFMinMax32.ReadAdvance = RA,
+    ReadFMinMax64.ReadAdvance = RA,
+    ReadFMinMax64.ReadAdvance = RA,
+    ReadFCvtF32ToI32.ReadAdvance = RA,
+    ReadFCvtF32ToI64.ReadAdvance = RA,
+    ReadFCvtF64ToI32.ReadAdvance = RA,
+    ReadFCvtF64ToI64.ReadAdvance = RA,
+    ReadFCvtI32ToF32.ReadAdvance = RA,
+    ReadFCvtI32ToF64.ReadAdvance = RA,
+    ReadFCvtI64ToF32.ReadAdvance = RA,
+    ReadFCvtI64ToF64.ReadAdvance = RA,
+    ReadFCvtF32ToF64.ReadAdvance = RA,
+    ReadFCvtF64ToF32.ReadAdvance = RA,
+    ReadFMovF32ToI32.ReadAdvance = RA,
+    ReadFMovI32ToF32.ReadAdvance = RA,
+    ReadFMovF64ToI64.ReadAdvance = RA,
+    ReadFMovI64ToF64.ReadAdvance = RA,
+    ReadFClass32.ReadAdvance = RA,
+    ReadFClass64.ReadAdvance = RA,
+    ReadSFB.ReadAdvance = RA,
+
+    // TODO: Unsupported Extensions
+}
