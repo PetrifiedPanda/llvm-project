@@ -1,8 +1,6 @@
 #ifndef RISCV_DYN_SUBTARGET_H
 #define RISCV_DYN_SUBTARGET_H
 
-#include <vector>
-
 #include "llvm/MC/MCSchedule.h"
 
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -10,24 +8,27 @@
 namespace llvm {
 
 struct RISCVDynSubtargetData {
+  SmallVector<std::string> ArchNames;
   // Data for SubtargetInfo
-  std::vector<SubtargetFeatureKV> FeatureKV;
-  std::vector<SubtargetSubTypeKV> SubTypeKV;
+  SmallVector<SubtargetFeatureKV> FeatureKV;
+  SmallVector<SubtargetSubTypeKV> SubTypeKV;
 
-  std::vector<MCWriteProcResEntry> WriteProcResTable;
-  std::vector<MCWriteLatencyEntry> WriteLatencyTable;
-  std::vector<MCReadAdvanceEntry> ReadAdvanceTable;
+  SmallVector<MCWriteProcResEntry> WriteProcResTable;
+  SmallVector<MCWriteLatencyEntry> WriteLatencyTable;
+  SmallVector<MCReadAdvanceEntry> ReadAdvanceTable;
 
-  // Data for schedModel
-  std::vector<MCProcResourceDesc> ProcResourceTable;
-  std::vector<MCSchedClassDesc> SchedClassTable;
+  // Data for each schedModel
+  SmallVector<SmallVector<MCProcResourceDesc>> ProcResourceTables;
+  SmallVector<SmallVector<MCSchedClassDesc>> SchedClassTables;
 
-  RISCVDynSubtargetData() = delete;
+  SmallVector<MCSchedModel> SchedModels;
+
+  RISCVDynSubtargetData() = default;
   RISCVDynSubtargetData(const RISCVDynSubtargetData &) = delete;
   RISCVDynSubtargetData(RISCVDynSubtargetData &&) = default;
 };
 
-MCSchedModel getDynSubtargetSchedModel(const RISCVDynSubtargetData &SD);
+RISCVDynSubtargetData getDynSubtargetData(const char* Filename);
 
 class RISCVDynSubtargetInfo : public TargetSubtargetInfo {
   RISCVDynSubtargetInfo(const RISCVDynSubtargetData &SD, const Triple &TT,
