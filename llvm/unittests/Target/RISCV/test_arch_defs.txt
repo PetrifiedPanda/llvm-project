@@ -168,6 +168,7 @@ arch Rocket {
 }
 
 arch RocketWithBadMuls : Rocket {
+    // TODO: Reassigning Associated Writes?
     RocketUnitIMul.AssociatedWrites = [
         {WriteRes.Latency = 1000, Writes = [WriteIMul, WriteIMul32]}
     ],
@@ -188,7 +189,7 @@ arch SiFive7 {
         BufferSize = 0,
     },
 
-    let SiFIve7PipeB: ProcResource = {
+    let SiFive7PipeB: ProcResource = {
         NumUnits = 1,
         BufferSize = 0,
     },
