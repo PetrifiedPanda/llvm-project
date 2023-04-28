@@ -571,17 +571,15 @@ void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
     VarInfo Curr = std::move(VarStack.back());
     VarStack.pop_back();
     std::cout << "Popping " << Curr.Id << " with Kind: " << static_cast<size_t>(Curr.Val.Type.Kind) << '\n';
-    /*
     if (VarStack.empty()) {
       auto It = CurrentArchVals.find(Curr.Id);
       assert(It != CurrentArchVals.end());
-      It->getValue() = std::move(Curr.Val);
+      It->second = std::move(Curr.Val);
     } else {
       VarInfo &Prev = VarStack.back();
       assert(Prev.Val.Type.Kind == VarKind::Obj);
       Prev.Val.ObjVal.writeMember(Curr.Id, std::move(Curr.Val));
     }
-    */
   }
 }
 
