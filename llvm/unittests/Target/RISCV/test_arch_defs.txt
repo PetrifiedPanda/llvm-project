@@ -12,7 +12,6 @@ arch Rocket {
     let RocketUnitALU: ProcResource = {
         // NumUnits is part of ProcResourceUnits, so assigning it here may not work
         NumUnits = 1,
-        BufferSize = 0,
     },
     let RocketUnitIMul: ProcResource = {
         NumUnits = 1,
@@ -84,7 +83,7 @@ arch Rocket {
     RocketUnitFPDivSqrt.AssociatedWrites = [
         // The first and second entry could be merged, but I wanted to maintain similarity with the tablegen file
         {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFDiv32, WriteFPDiv64]},
-        {WriteRes = {Latenyc = 20, ResourceCycles = 20}, Writes = [WriteFSqrt32]},
+        {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFSqrt32]},
         {WriteRes = {Latency = 25, ResourceCycles = 25}, Writes = [WriteFSqrt64]},
     ],
 
@@ -374,7 +373,7 @@ arch SyntacoreSCR1Model {
     ],
 
     SCR1_DIV.AssociatedWrites = [
-        {WriteRes = {Latency = 33, ResouceCycles = 33}, Writes = [WriteIDiv32, WriteIDiv]},
+        {WriteRes = {Latency = 33, ResourceCycles = 33}, Writes = [WriteIDiv32, WriteIDiv]},
     ],
 
     SCR1_LSU.AssociatedWrites = [

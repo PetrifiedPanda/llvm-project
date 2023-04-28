@@ -13,8 +13,8 @@ using namespace antlr_dsl;
 // TODO: remove all unneeded overrides
 class DSLListener final : public DSLGrammarBaseListener {
   template <typename T> using Vec = std::vector<T>;
+  template <typename T> using IdentifierMap = std::map<std::string, T>;
 
-  RISCVDynSubtargetData &Res;
   enum class VarKind {
     Invalid,
     Bool,
@@ -38,12 +38,16 @@ class DSLListener final : public DSLGrammarBaseListener {
       assert(Kind != VarKind::List);
       assert(Kind != VarKind::Ref);
     }
-    VarType(VarKind Kind, size_t ObjTypeIdx) : Kind{Kind}, ObjTypeIdx{ObjTypeIdx} {
+    VarType(VarKind Kind, size_t ObjTypeIdx)
+        : Kind{Kind}, ObjTypeIdx{ObjTypeIdx} {
       assert(Kind == VarKind::Obj || Kind == VarKind::Ref);
     }
-    VarType(VarKind Kind, size_t ObjTypeIdx, VarKind ListKind, size_t ListObjTypeIdx) : Kind{Kind}, ObjTypeIdx{ObjTypeIdx}, ListKind{ListKind}, ListObjTypeIdx{ListObjTypeIdx} {}
+    VarType(VarKind Kind, size_t ObjTypeIdx, VarKind ListKind,
+            size_t ListObjTypeIdx)
+        : Kind{Kind}, ObjTypeIdx{ObjTypeIdx}, ListKind{ListKind},
+          ListObjTypeIdx{ListObjTypeIdx} {}
 
-    bool operator==(const VarType& Other) const {
+    bool operator==(const VarType &Other) const {
       if (Kind != Other.Kind) {
         return false;
       }
@@ -58,7 +62,7 @@ class DSLListener final : public DSLGrammarBaseListener {
         }
 
         if (ListKind == VarKind::Obj || ListKind == VarKind::Ref) {
-            return ListObjTypeIdx == Other.ListObjTypeIdx;
+          return ListObjTypeIdx == Other.ListObjTypeIdx;
         }
       }
       return true;
@@ -72,7 +76,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   };
 
   struct ObjectVal {
-    using MemberMap = std::map<std::string, VarVal>;
+    using MemberMap = IdentifierMap<VarVal>;
     MemberMap Members;
 
     ObjectVal(MemberMap &&Members) : Members{std::move(Members)} {}
@@ -82,15 +86,21 @@ class DSLListener final : public DSLGrammarBaseListener {
       assert(It != Members.end());
       VarVal &ToWrite = It->second;
       if (ToWrite.Type.Kind != Val.Type.Kind) {
-        std::cout << "Type Mismatch: " << static_cast<size_t>(ToWrite.Type.Kind) << " vs " << static_cast<size_t>(Val.Type.Kind) << "\n";
-        // TODO error
-        throw std::runtime_error{"error"};
-      } else if (ToWrite.Type.Kind == VarKind::Obj ||
-                 ToWrite.Type.Kind == VarKind::Ref) {
+        throw std::runtime_error{
+            "Type Mismatch: Expected " +
+            std::to_string(static_cast<size_t>(ToWrite.Type.Kind)) +
+            " but got " + std::to_string(static_cast<size_t>(Val.Type.Kind))};
+      }
+
+      if (ToWrite.Type.Kind == VarKind::Obj ||
+          ToWrite.Type.Kind == VarKind::Ref) {
         assert(Val.Type.Kind == VarKind::Obj || Val.Type.Kind == VarKind::Ref);
         if (ToWrite.Type.ObjTypeIdx != Val.Type.ObjTypeIdx) {
           // TODO: errror
-          throw std::runtime_error{"error"};
+          throw std::runtime_error{"Type Mismatch(Object Type): Expected " +
+                                   std::to_string(ToWrite.Type.ObjTypeIdx) +
+                                   " but got " +
+                                   std::to_string(Val.Type.ObjTypeIdx)};
         }
       }
       ToWrite = std::move(Val);
@@ -122,16 +132,16 @@ class DSLListener final : public DSLGrammarBaseListener {
     VarVal() : Type{}, Initialized{false} {}
     // TODO: normal int literal will be ambiguous, because it might be a bool
     VarVal(int64_t IntVal)
-        : Type{VarKind::Int}, IntVal{IntVal},
-          Initialized{true} {}
+        : Type{VarKind::Int}, IntVal{IntVal}, Initialized{true} {}
     VarVal(bool BoolVal)
-        : Type{VarKind::Bool}, BoolVal{BoolVal},
-          Initialized{true} {}
+        : Type{VarKind::Bool}, BoolVal{BoolVal}, Initialized{true} {}
     VarVal(size_t TypeIdx, const ObjectVal &Val)
         : Type{VarKind::Obj, TypeIdx}, ObjVal{Val}, Initialized{true} {
       assert(TypeIdx != InvalidTypeIdx);
     }
-    VarVal(VarKind Kind, size_t ObjTypeIdx, std::vector<VarVal> &&Vals) : Type{VarKind::List, InvalidTypeIdx, Kind, ObjTypeIdx}, LstVal{std::move(Vals)} {}
+    VarVal(VarKind Kind, size_t ObjTypeIdx, std::vector<VarVal> &&Vals)
+        : Type{VarKind::List, InvalidTypeIdx, Kind, ObjTypeIdx},
+          LstVal{std::move(Vals)} {}
     VarVal(size_t RefTypeIdx, const VarVal *RefVal)
         : Type{VarKind::Ref, RefTypeIdx}, RefData{RefVal} {
       assert(RefTypeIdx != InvalidTypeIdx);
@@ -182,6 +192,8 @@ class DSLListener final : public DSLGrammarBaseListener {
       } else if (Type.Kind == VarKind::List) {
         LstVal.~ListVal();
       }
+      Initialized = Other.Initialized;
+      Type = Other.Type;
       switch (Other.Type.Kind) {
       case VarKind::Invalid:
         break;
@@ -201,8 +213,6 @@ class DSLListener final : public DSLGrammarBaseListener {
         RefData = Other.RefData;
         break;
       }
-      Initialized = Other.Initialized;
-      Type = Other.Type;
       return *this;
     }
 
@@ -213,6 +223,8 @@ class DSLListener final : public DSLGrammarBaseListener {
       } else if (Type.Kind == VarKind::List) {
         LstVal.~ListVal();
       }
+      Initialized = Other.Initialized;
+      Type = Other.Type;
       switch (Other.Type.Kind) {
       case VarKind::Invalid:
         break;
@@ -232,13 +244,10 @@ class DSLListener final : public DSLGrammarBaseListener {
         RefData = Other.RefData;
         break;
       }
-      Initialized = Other.Initialized;
-      Type = Other.Type;
       return *this;
     }
   };
 
-  // TOOD: this might not be necessary anymore
   struct VarInfo {
     std::string Id;
     VarVal Val;
@@ -246,8 +255,7 @@ class DSLListener final : public DSLGrammarBaseListener {
 
   inline static const ObjectVal DefaultWriteRes = {{
       {"ResourceCycles",
-       VarVal{VarKind::Int, VarVal::InvalidTypeIdx,
-              std::vector<VarVal>{}}},
+       VarVal{VarKind::Int, VarVal::InvalidTypeIdx, std::vector<VarVal>{}}},
       {"Latency", VarVal(static_cast<int64_t>(1))},
       {"NumMicroOps", VarVal(static_cast<int64_t>(1))},
   }};
@@ -258,18 +266,19 @@ class DSLListener final : public DSLGrammarBaseListener {
   inline static const ObjectVal DefaultProcResource = {{
       {"NumUnits", VarVal{static_cast<int64_t>(1)}},
       {"Super", VarVal{1, nullptr}},
-      {"AssociatedWrites", VarVal{0, DefaultAssociatedWrite}},
+      {"BufferSize", VarVal{static_cast<int64_t>(-1)}},
+      {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
   }};
   inline static const ObjectVal DefaultReadAdvance = {{
       {"Cycles", VarVal(VarVal::createUninitialized(
                      VarType{VarKind::Int}))}, // Uninitialized
-      {"ValidWrites", VarVal{VarKind::Ref, 4,
-                             std::vector<VarVal>{}}}, // list<SchedWrite>
+      {"ValidWrites",
+       VarVal{VarKind::Ref, 4, std::vector<VarVal>{}}}, // list<SchedWrite>
   }};
 
   inline static const ObjectVal DefaultProcResGroup = {{
-      {"Resources",
-       VarVal{VarKind::Ref, 1, std::vector<VarVal>{}}},
+      {"Resources", VarVal{VarKind::Ref, 1, std::vector<VarVal>{}}},
+      {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
   }};
 
   inline static const ObjectVal DefaultSchedWrite = {{}};
@@ -283,7 +292,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   inline static const StringMap<size_t> TypeMap = {
       {"AssociatedWrite", 0}, {"ProcResource", 1}, {"WriteRes", 2},
       {"ReadAdvance", 3},     {"SchedWrite", 4},   {"ProcResGroup", 5},
-      {"SchedRead", 6}, {"RISCVFeature", 7},
+      {"SchedRead", 6},       {"RISCVFeature", 7},
   };
 
   inline static const Vec<ObjectVal> TypeMembers = {
@@ -303,7 +312,7 @@ class DSLListener final : public DSLGrammarBaseListener {
 
       DefaultRISCVFeature,
   };
-  inline static const StringMap<VarVal> DefaultArchVals = {
+  inline static const IdentifierMap<VarVal> DefaultArchVals = {
       // Values from MCSchedModel
       {"IssueWidth", VarVal{static_cast<int64_t>(1)}},
       {"LoadLatency", VarVal{static_cast<int64_t>(4)}},
@@ -387,18 +396,15 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"HasVInstructions", VarVal{7, DefaultRISCVFeature}},
       {"HasVInstructionsI64", VarVal{7, DefaultRISCVFeature}},
   };
-
-  Vec<StringMap<VarVal>> PrevArchVals;
-  StringMap<VarVal> CurrentArchVals;
+  
+  Vec<std::string> ArchNames;
+  Vec<IdentifierMap<VarVal>> PrevArchVals;
+  IdentifierMap<VarVal> CurrentArchVals;
   Vec<VarInfo> VarStack;
   // Stores the size of VarStack before this overwrite
   Vec<size_t> OverwriteStack;
   std::string CurrentDefID = "";
   int64_t CurrentArchIdx = -1;
-
-public:
-  DSLListener(RISCVDynSubtargetData &Res) : Res{Res} {}
-
 private:
   void
   enterTranslationUnit(DSLGrammarParser::TranslationUnitContext *TL) override;
@@ -442,8 +448,11 @@ private:
 
   const VarVal &getVarVal(const std::string &Spell) const;
 
+  int64_t getArchIndex(const std::string& Name) const;
+
   VarType getCurrVarType() const;
   const std::string *getCurrVarSpell() const;
+  VarVal getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const;
 };
 
 void DSLListener::enterTranslationUnit(
@@ -455,10 +464,9 @@ void DSLListener::exitTranslationUnit(
   // TODO:
 }
 
-static int getArchIndex(const std::string &Name,
-                        const RISCVDynSubtargetData &Data) {
-  for (int I = 0; static_cast<size_t>(I) < Data.ArchNames.size(); ++I) {
-    if (Data.ArchNames[I] == Name) {
+int64_t DSLListener::getArchIndex(const std::string &Name) const {
+  for (int64_t I = 0; static_cast<size_t>(I) < ArchNames.size(); ++I) {
+    if (ArchNames[I] == Name) {
       return I;
     }
   }
@@ -476,23 +484,16 @@ void DSLListener::enterArchitectureDefinition(
   }
   if (Ids.size() == 2) {
     std::string InheritName = Ids[1]->toString();
-    const int64_t ArchIndex = getArchIndex(InheritName, Res);
+    const int64_t ArchIndex = getArchIndex(InheritName);
     if (ArchIndex == -1) {
       // TODO: correct error
       throw "could not find arch def";
     }
-    // Copy values of inherited arch (Copying tables may not be necessary)
-    Res.ProcResourceTables.push_back(Res.ProcResourceTables[ArchIndex]);
-    Res.SchedClassTables.push_back(Res.SchedClassTables[ArchIndex]);
-
     CurrentArchVals = PrevArchVals[ArchIndex];
   } else {
-    Res.ProcResourceTables.emplace_back();
-    Res.SchedClassTables.emplace_back();
-
     CurrentArchVals = DefaultArchVals;
   }
-  Res.ArchNames.push_back(std::move(ArchName));
+  ArchNames.push_back(std::move(ArchName));
   ++CurrentArchIdx;
 }
 
@@ -509,6 +510,7 @@ void DSLListener::enterDefinition(DSLGrammarParser::DefinitionContext *Def) {
 }
 void DSLListener::exitDefinition(DSLGrammarParser::DefinitionContext *Def) {
   // TODO:
+  std::cout << "Popping " << VarStack[VarStack.size() - 1].Id << '\n';
   VarStack.pop_back();
 }
 
@@ -520,9 +522,21 @@ DSLListener::getVarVal(const std::string &Spell) const {
       // TODO: correct error
       throw std::runtime_error{"Undefined reference to " + Spell};
     }
-    return Found->getValue();
+    return Found->second;
   }
-  return VarStack[VarStack.size() - 1].Val;
+
+  const VarVal& Curr = VarStack.back().Val;
+  // TODO: refs allowed?
+  if (Curr.Type.Kind != VarKind::Obj) {
+    throw std::runtime_error{"Expected object type"};
+  }
+  const auto& ToSearch = Curr.ObjVal.Members;
+  auto Found = ToSearch.find(Spell);
+  if (Found == ToSearch.end()) {
+      // TODO: correct error
+      throw std::runtime_error{"Undefined reference to " + Spell};
+  }
+  return Found->second;
 }
 
 DSLListener::VarType DSLListener::getCurrVarType() const {
@@ -556,17 +570,18 @@ void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
     // TODO: write value here
     VarInfo Curr = std::move(VarStack.back());
     VarStack.pop_back();
-    /* TODO:
+    std::cout << "Popping " << Curr.Id << " with Kind: " << static_cast<size_t>(Curr.Val.Type.Kind) << '\n';
+    /*
     if (VarStack.empty()) {
       auto It = CurrentArchVals.find(Curr.Id);
       assert(It != CurrentArchVals.end());
       It->getValue() = std::move(Curr.Val);
     } else {
       VarInfo &Prev = VarStack.back();
-      assert(Prev.Val.Type.Type == VarKind::Obj);
+      assert(Prev.Val.Type.Kind == VarKind::Obj);
       Prev.Val.ObjVal.writeMember(Curr.Id, std::move(Curr.Val));
     }
-     */
+    */
   }
 }
 
@@ -575,6 +590,7 @@ void DSLListener::enterMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {
     std::string Spell = Id->toString();
     const VarVal &Val = getVarVal(Spell);
     assert(Val.Type.Kind != VarKind::Invalid);
+    std::cout << "Pushing " << Spell << " with Kind " << static_cast<size_t>(Val.Type.Kind) << '\n';
     VarStack.push_back(VarInfo{Spell, Val});
   }
 }
@@ -614,6 +630,7 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   VarInfo Info{std::move(CurrentDefID), std::move(CurrentDefVal)};
   CurrentDefID = "";
   CurrentArchVals.insert(std::make_pair(Info.Id, Info.Val));
+  std::cout << "Pushing " << Info.Id << " with kind " << static_cast<size_t>(CurrentArchVals[Info.Id].Type.Kind) << '\n';
   VarStack.push_back(std::move(Info));
 }
 void DSLListener::exitType(DSLGrammarParser::TypeContext *T) {
@@ -627,10 +644,44 @@ void DSLListener::exitListType(DSLGrammarParser::ListTypeContext *LT) {
   // TODO:
 }
 
+DSLListener::VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
+  switch (Kind) {
+  case VarKind::Invalid:
+    llvm_unreachable("");
+  case VarKind::Bool:
+  case VarKind::Int:
+    return VarVal::createUninitialized(VarType{Kind});
+  case VarKind::Obj:
+    assert(ObjTypeIdx != VarVal::InvalidTypeIdx);
+    return VarVal{ObjTypeIdx, TypeMembers[ObjTypeIdx]};
+  case VarKind::List:
+    llvm_unreachable("List of lists not implemented");
+  case VarKind::Ref:
+    return VarVal{ObjTypeIdx, nullptr};
+  }
+  
+  assert(false);
+}
+
 void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
   // TODO:
-  // TODO: Maybe for every object that is in a list create an Object with empty ID? Every empty ID would be assumed to be part of a list (Assert that the Object on the stack before it is a list)
+  VarVal& Curr = VarStack.back().Val;
+  if (Curr.Type.Kind == VarKind::List) {
+    VarStack.push_back(VarInfo{"", getDefaultValue(Curr.Type.ListKind, Curr.Type.ListObjTypeIdx)});
+  }
+}
+void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
+  // TODO:
+  // TODO: Maybe for every object that is in a list create an Object with empty
+  // ID? Every empty ID would be assumed to be part of a list (Assert that the
+  // Object on the stack before it is a list)
   if (auto *Int = Expr->INT()) {
+    VarInfo& CurrInfo = VarStack.back();
+    VarVal& Curr = CurrInfo.Val;
+    if (Curr.Type.Kind != VarKind::Int) {
+      throw std::runtime_error{CurrInfo.Id + " is not an int"};
+    }
+    Curr = VarVal{static_cast<int64_t>(stoi(Int->toString()))};
     std::cout << "INT: " << Int->toString() << '\n';
   } else if (auto *Bool = Expr->BOOL()) {
     std::cout << "BOOL: " << Bool->toString() << '\n';
@@ -642,13 +693,18 @@ void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
   } else if (auto *Obj = Expr->obj()) {
     std::cout << "Object: " << Obj->toString() << '\n';
   }
-}
-void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
-  // TODO:
+
+  if (VarStack.back().Id == "") {
+    assert(VarStack.size() > 1);
+    VarVal& List = VarStack[VarStack.size() - 2].Val;
+    assert(List.Type.Kind == VarKind::List);
+    List.LstVal.Vals.push_back(std::move(VarStack.back().Val));
+    VarStack.pop_back();
+  }
 }
 
 void DSLListener::enterList(DSLGrammarParser::ListContext *List) {
-  // TODO: error if current variable is not a list
+  // TODO:
 }
 void DSLListener::exitList(DSLGrammarParser::ListContext *List) {
   // TODO:
@@ -682,10 +738,10 @@ RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {
   antlr4::CommonTokenStream Toks{&Lexer};
   DSLGrammarParser Parser{&Toks};
   antlr4::tree::ParseTree *Tree = Parser.translationUnit();
-  RISCVDynSubtargetData Res;
-  DSLListener Listener{Res};
+  DSLListener Listener;
   antlr4::tree::ParseTreeWalker::DEFAULT.walk(&Listener, Tree);
-  return Res;
+  // TODO: convert data from Listener to RISCVDynSubtargetData
+  return RISCVDynSubtargetData{};
 }
 
 static MCSchedModel getDynSubtargetSchedModel(const RISCVDynSubtargetData &SD,
