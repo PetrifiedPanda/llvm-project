@@ -6,253 +6,14 @@
 #include "antlr4cpp_generated_src/DSLGrammar/DSLGrammarLexer.h"
 #include "antlr4cpp_generated_src/DSLGrammar/DSLGrammarParser.h"
 
+#include "DSL.h"
+
 namespace llvm {
 
 using namespace antlr_dsl;
 
 // TODO: remove all unneeded overrides
 class DSLListener final : public DSLGrammarBaseListener {
-  template <typename T> using Vec = std::vector<T>;
-  template <typename T> using IdentifierMap = std::map<std::string, T>;
-
-  enum class VarKind {
-    Invalid,
-    Bool,
-    Int,
-    Obj,
-    List,
-    Ref,
-  };
-  struct ObjectVal;
-
-  struct VarType {
-    VarKind Kind = VarKind::Invalid;
-    size_t ObjTypeIdx = VarVal::InvalidTypeIdx;
-    VarKind ListKind = VarKind::Invalid;
-    size_t ListObjTypeIdx = VarVal::InvalidTypeIdx;
-
-    VarType() {}
-    explicit VarType(VarKind Kind) : Kind{Kind} {
-      assert(Kind != VarKind::Obj);
-      assert(Kind != VarKind::Invalid);
-      assert(Kind != VarKind::List);
-      assert(Kind != VarKind::Ref);
-    }
-    VarType(VarKind Kind, size_t ObjTypeIdx)
-        : Kind{Kind}, ObjTypeIdx{ObjTypeIdx} {
-      assert(Kind == VarKind::Obj || Kind == VarKind::Ref);
-    }
-    VarType(VarKind Kind, size_t ObjTypeIdx, VarKind ListKind,
-            size_t ListObjTypeIdx)
-        : Kind{Kind}, ObjTypeIdx{ObjTypeIdx}, ListKind{ListKind},
-          ListObjTypeIdx{ListObjTypeIdx} {}
-
-    bool operator==(const VarType &Other) const {
-      if (Kind != Other.Kind) {
-        return false;
-      }
-
-      if (Kind == VarKind::Obj || Kind == VarKind::Ref) {
-        return ObjTypeIdx == Other.ObjTypeIdx;
-      }
-
-      if (Kind == VarKind::List) {
-        if (ListKind != Other.ListKind) {
-          return false;
-        }
-
-        if (ListKind == VarKind::Obj || ListKind == VarKind::Ref) {
-          return ListObjTypeIdx == Other.ListObjTypeIdx;
-        }
-      }
-      return true;
-    }
-  };
-
-  struct VarVal;
-
-  struct ListVal {
-    std::vector<VarVal> Vals;
-  };
-
-  struct ObjectVal {
-    using MemberMap = IdentifierMap<VarVal>;
-    MemberMap Members;
-
-    ObjectVal(MemberMap &&Members) : Members{std::move(Members)} {}
-
-    void writeMember(const std::string &Id, VarVal &&Val) {
-      auto It = Members.find(Id);
-      assert(It != Members.end());
-      VarVal &ToWrite = It->second;
-      if (ToWrite.Type.Kind != Val.Type.Kind) {
-        throw std::runtime_error{
-            "Type Mismatch: Expected " +
-            std::to_string(static_cast<size_t>(ToWrite.Type.Kind)) +
-            " but got " + std::to_string(static_cast<size_t>(Val.Type.Kind))};
-      }
-
-      if (ToWrite.Type.Kind == VarKind::Obj ||
-          ToWrite.Type.Kind == VarKind::Ref) {
-        assert(Val.Type.Kind == VarKind::Obj || Val.Type.Kind == VarKind::Ref);
-        if (ToWrite.Type.ObjTypeIdx != Val.Type.ObjTypeIdx) {
-          // TODO: errror
-          throw std::runtime_error{"Type Mismatch(Object Type): Expected " +
-                                   std::to_string(ToWrite.Type.ObjTypeIdx) +
-                                   " but got " +
-                                   std::to_string(Val.Type.ObjTypeIdx)};
-        }
-      }
-      ToWrite = std::move(Val);
-    }
-  };
-
-  struct VarVal {
-    VarType Type;
-    union {
-      int64_t IntVal;
-      bool BoolVal;
-      ListVal LstVal;
-      ObjectVal ObjVal;
-      // TODO: If the Map is resized the pointers will be invalidated
-      const VarVal *RefData;
-    };
-    bool Initialized;
-
-    static constexpr size_t InvalidTypeIdx = static_cast<size_t>(-1);
-
-    static VarVal createUninitialized(VarType Type) {
-      VarVal Res;
-      memset(&Res, 0, sizeof Res);
-      Res.Type = Type;
-      Res.Initialized = false;
-      return Res;
-    }
-
-    VarVal() : Type{}, Initialized{false} {}
-    // TODO: normal int literal will be ambiguous, because it might be a bool
-    VarVal(int64_t IntVal)
-        : Type{VarKind::Int}, IntVal{IntVal}, Initialized{true} {}
-    VarVal(bool BoolVal)
-        : Type{VarKind::Bool}, BoolVal{BoolVal}, Initialized{true} {}
-    VarVal(size_t TypeIdx, const ObjectVal &Val)
-        : Type{VarKind::Obj, TypeIdx}, ObjVal{Val}, Initialized{true} {
-      assert(TypeIdx != InvalidTypeIdx);
-    }
-    VarVal(VarKind Kind, size_t ObjTypeIdx, std::vector<VarVal> &&Vals)
-        : Type{VarKind::List, InvalidTypeIdx, Kind, ObjTypeIdx},
-          LstVal{std::move(Vals)} {}
-    VarVal(size_t RefTypeIdx, const VarVal *RefVal)
-        : Type{VarKind::Ref, RefTypeIdx}, RefData{RefVal} {
-      assert(RefTypeIdx != InvalidTypeIdx);
-      assert(RefVal == nullptr || RefTypeIdx == RefVal->Type.ObjTypeIdx);
-    }
-    VarVal(const VarVal &Other) : Type{Other.Type} {
-      switch (Type.Kind) {
-      case VarKind::Invalid:
-        break;
-      case VarKind::Bool:
-        BoolVal = Other.BoolVal;
-        break;
-      case VarKind::Int:
-        IntVal = Other.IntVal;
-        break;
-      case VarKind::Obj:
-        new (&ObjVal) ObjectVal(Other.ObjVal);
-        break;
-      case VarKind::List:
-        new (&LstVal) ListVal(Other.LstVal);
-        break;
-      case VarKind::Ref:
-        RefData = Other.RefData;
-        break;
-      }
-      Initialized = Other.Initialized;
-    }
-    ~VarVal() {
-      switch (Type.Kind) {
-      case VarKind::Invalid:
-      case VarKind::Bool:
-      case VarKind::Int:
-      case VarKind::Ref:
-        break;
-      case VarKind::Obj:
-        ObjVal.~ObjectVal();
-        break;
-      case VarKind::List:
-        LstVal.~ListVal();
-        break;
-      }
-    }
-
-    // TODO: assigning to garbage memory error
-    VarVal &operator=(const VarVal &Other) {
-      if (Type.Kind == VarKind::Obj) {
-        ObjVal.~ObjectVal();
-      } else if (Type.Kind == VarKind::List) {
-        LstVal.~ListVal();
-      }
-      Initialized = Other.Initialized;
-      Type = Other.Type;
-      switch (Other.Type.Kind) {
-      case VarKind::Invalid:
-        break;
-      case VarKind::Bool:
-        BoolVal = Other.BoolVal;
-        break;
-      case VarKind::Int:
-        IntVal = Other.IntVal;
-        break;
-      case VarKind::Obj:
-        new (&ObjVal) ObjectVal(Other.ObjVal);
-        break;
-      case VarKind::List:
-        new (&LstVal) ListVal(Other.LstVal);
-        break;
-      case VarKind::Ref:
-        RefData = Other.RefData;
-        break;
-      }
-      return *this;
-    }
-
-    // TODO: Make this work with self-assignment
-    VarVal &operator=(VarVal &&Other) {
-      if (Type.Kind == VarKind::Obj) {
-        ObjVal.~ObjectVal();
-      } else if (Type.Kind == VarKind::List) {
-        LstVal.~ListVal();
-      }
-      Initialized = Other.Initialized;
-      Type = Other.Type;
-      switch (Other.Type.Kind) {
-      case VarKind::Invalid:
-        break;
-      case VarKind::Bool:
-        BoolVal = Other.BoolVal;
-        break;
-      case VarKind::Int:
-        IntVal = Other.IntVal;
-        break;
-      case VarKind::Obj:
-        new (&ObjVal) ObjectVal(std::move(Other.ObjVal));
-        break;
-      case VarKind::List:
-        new (&LstVal) ListVal(std::move(Other.LstVal));
-        break;
-      case VarKind::Ref:
-        RefData = Other.RefData;
-        break;
-      }
-      return *this;
-    }
-  };
-
-  struct VarInfo {
-    std::string Id;
-    VarVal Val;
-  };
-
   inline static const ObjectVal DefaultWriteRes = {{
       {"ResourceCycles",
        VarVal{VarKind::Int, VarVal::InvalidTypeIdx, std::vector<VarVal>{}}},
@@ -265,7 +26,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   }};
   inline static const ObjectVal DefaultProcResource = {{
       {"NumUnits", VarVal{static_cast<int64_t>(1)}},
-      {"Super", VarVal{1, nullptr}},
+      {"Super", VarVal{1, ""}},
       {"BufferSize", VarVal{static_cast<int64_t>(-1)}},
       {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
   }};
@@ -295,7 +56,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"SchedRead", 6},       {"RISCVFeature", 7},
   };
 
-  inline static const Vec<ObjectVal> TypeMembers = {
+  inline static const Vec<ObjectVal> TypeDefaults = {
       DefaultAssociatedWrite,
 
       DefaultProcResource,
@@ -323,7 +84,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"NoProcResource",
        VarVal{1, DefaultProcResource}}, // TODO: not sure if this should be
                                         // DefaultProcResource
-      // SchedReads
+      // SchedReads TODO: check if all reads from RISCVSchedule.td are here
       {"ReadJmp", VarVal{6, DefaultSchedRead}},
       {"ReadJalr", VarVal{6, DefaultSchedRead}},
       {"ReadCSR", VarVal{6, DefaultSchedRead}},
@@ -395,8 +156,107 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"HasStdExtZkr", VarVal{7, DefaultRISCVFeature}},
       {"HasVInstructions", VarVal{7, DefaultRISCVFeature}},
       {"HasVInstructionsI64", VarVal{7, DefaultRISCVFeature}},
+      // SchedWrites
+      {"WriteIALU", VarVal{4, DefaultSchedWrite}},
+      {"WriteIALU32", VarVal{4, DefaultSchedWrite}},
+      {"WriteShiftImm", VarVal{4, DefaultSchedWrite}},
+      {"WriteShiftImm32", VarVal{4, DefaultSchedWrite}},
+      {"WriteShiftReg", VarVal{4, DefaultSchedWrite}},
+      {"WriteShiftReg32", VarVal{4, DefaultSchedWrite}},
+      {"WriteIDiv", VarVal{4, DefaultSchedWrite}},
+      {"WriteIDiv32", VarVal{4, DefaultSchedWrite}},
+      {"WriteIMul", VarVal{4, DefaultSchedWrite}},
+      {"WriteIMul32", VarVal{4, DefaultSchedWrite}},
+      {"WriteJmp", VarVal{4, DefaultSchedWrite}},
+      {"WriteJal", VarVal{4, DefaultSchedWrite}},
+      {"WriteJalr", VarVal{4, DefaultSchedWrite}},
+      {"WriteJmpReg", VarVal{4, DefaultSchedWrite}},
+      {"WriteNop", VarVal{4, DefaultSchedWrite}},
+      {"WriteLDB", VarVal{4, DefaultSchedWrite}},
+      {"WriteLDH", VarVal{4, DefaultSchedWrite}},
+      {"WriteLDW", VarVal{4, DefaultSchedWrite}},
+      {"WriteLDD", VarVal{4, DefaultSchedWrite}},
+      {"WriteCSR", VarVal{4, DefaultSchedWrite}},
+      {"WriteSTB", VarVal{4, DefaultSchedWrite}},
+      {"WriteSTH", VarVal{4, DefaultSchedWrite}},
+      {"WriteSTW", VarVal{4, DefaultSchedWrite}},
+      {"WriteSTD", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicW", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicD", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicLDW", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicLDD", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicSTW", VarVal{4, DefaultSchedWrite}},
+      {"WriteAtomicSTD", VarVal{4, DefaultSchedWrite}},
+      {"WriteFAdd16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFAdd32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFAdd64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFMul16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMul32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMul64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFMA16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMA32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMA64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFDiv16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFDiv32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFDiv64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFSqrt16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFSqrt32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFSqrt64", VarVal{4, DefaultSchedWrite}},
+      // Int to float
+      {"WriteFCvtI32ToF16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtI32ToF32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtI32ToF64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtI64ToF16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtI64ToF32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtI64ToF64", VarVal{4, DefaultSchedWrite}},
+      // Float to Int
+      {"WriteFCvtF16ToI32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF16ToI64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF32ToI32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF32ToI64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF64ToI32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF64ToI64", VarVal{4, DefaultSchedWrite}},
+      // Float to Float
+      {"WriteFCvtF32ToF64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF64ToF32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF16ToF32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF32ToF16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF16ToF64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCvtF64ToF16", VarVal{4, DefaultSchedWrite}},
+      
+      {"WriteFClass16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFClass32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFClass64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCmp16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCmp32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFCmp64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFSGNJ16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFSGNJ32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFSGNJ64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMinMax16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMinMax32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMinMax64", VarVal{4, DefaultSchedWrite}},
+
+      {"WriteFMovF16ToI16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMovI16ToF16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMovF32ToI32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMovI32ToF32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMovF64ToI64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFMovI64ToF64", VarVal{4, DefaultSchedWrite}},
+      
+      {"WriteFLD16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFLD32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFLD64", VarVal{4, DefaultSchedWrite}},
+      {"WriteFST16", VarVal{4, DefaultSchedWrite}},
+      {"WriteFST32", VarVal{4, DefaultSchedWrite}},
+      {"WriteFST64", VarVal{4, DefaultSchedWrite}},
+      {"WriteSFB", VarVal{4, DefaultSchedWrite}},
   };
-  
+
+  struct VarInfo {
+    std::string Id;
+    VarVal Val;
+  };
   Vec<std::string> ArchNames;
   Vec<IdentifierMap<VarVal>> PrevArchVals;
   IdentifierMap<VarVal> CurrentArchVals;
@@ -405,6 +265,19 @@ class DSLListener final : public DSLGrammarBaseListener {
   Vec<size_t> OverwriteStack;
   std::string CurrentDefID = "";
   int64_t CurrentArchIdx = -1;
+
+public:
+  Vec<DSLArchData> getArchData() {
+    Vec<DSLArchData> Res;
+    const size_t Size = CurrentArchIdx + 1;
+    Res.reserve(Size);
+    for (size_t I = 0; I < Size; ++I) {
+      Res.push_back(
+          DSLArchData{std::move(ArchNames[I]), std::move(PrevArchVals[I])});
+    }
+    return Res;
+  }
+
 private:
   void
   enterTranslationUnit(DSLGrammarParser::TranslationUnitContext *TL) override;
@@ -448,7 +321,7 @@ private:
 
   const VarVal &getVarVal(const std::string &Spell) const;
 
-  int64_t getArchIndex(const std::string& Name) const;
+  int64_t getArchIndex(const std::string &Name) const;
 
   VarType getCurrVarType() const;
   const std::string *getCurrVarSpell() const;
@@ -478,10 +351,6 @@ void DSLListener::enterArchitectureDefinition(
   const auto &Ids = AD->ID();
   assert(Ids.size() == 1 || Ids.size() == 2);
 
-  std::string ArchName = Ids[0]->toString();
-  if (CurrentArchIdx != -1) {
-    PrevArchVals.push_back(std::move(CurrentArchVals));
-  }
   if (Ids.size() == 2) {
     std::string InheritName = Ids[1]->toString();
     const int64_t ArchIndex = getArchIndex(InheritName);
@@ -493,15 +362,16 @@ void DSLListener::enterArchitectureDefinition(
   } else {
     CurrentArchVals = DefaultArchVals;
   }
-  ArchNames.push_back(std::move(ArchName));
   ++CurrentArchIdx;
 }
 
 void DSLListener::exitArchitectureDefinition(
     DSLGrammarParser::ArchitectureDefinitionContext *AD) {
-  // TODO: Write Values read from file
-
   assert(VarStack.size() == 0);
+  std::string ArchName = AD->ID()[0]->toString();
+  PrevArchVals.push_back(std::move(CurrentArchVals));
+
+  ArchNames.push_back(std::move(ArchName));
 }
 
 void DSLListener::enterDefinition(DSLGrammarParser::DefinitionContext *Def) {
@@ -514,8 +384,7 @@ void DSLListener::exitDefinition(DSLGrammarParser::DefinitionContext *Def) {
   VarStack.pop_back();
 }
 
-const DSLListener::VarVal &
-DSLListener::getVarVal(const std::string &Spell) const {
+const VarVal &DSLListener::getVarVal(const std::string &Spell) const {
   if (VarStack.empty()) {
     auto Found = CurrentArchVals.find(Spell);
     if (Found == CurrentArchVals.end()) {
@@ -525,21 +394,21 @@ DSLListener::getVarVal(const std::string &Spell) const {
     return Found->second;
   }
 
-  const VarVal& Curr = VarStack.back().Val;
+  const VarVal &Curr = VarStack.back().Val;
   // TODO: refs allowed?
   if (Curr.Type.Kind != VarKind::Obj) {
     throw std::runtime_error{"Expected object type"};
   }
-  const auto& ToSearch = Curr.ObjVal.Members;
+  const auto &ToSearch = Curr.ObjVal.Members;
   auto Found = ToSearch.find(Spell);
   if (Found == ToSearch.end()) {
-      // TODO: correct error
-      throw std::runtime_error{"Undefined reference to " + Spell};
+    // TODO: correct error
+    throw std::runtime_error{"Undefined reference to " + Spell};
   }
   return Found->second;
 }
 
-DSLListener::VarType DSLListener::getCurrVarType() const {
+VarType DSLListener::getCurrVarType() const {
   if (VarStack.size() != 0) {
     return VarStack[VarStack.size() - 1].Val.Type;
   }
@@ -559,18 +428,16 @@ void DSLListener::enterOverwrite(DSLGrammarParser::OverwriteContext *OW) {
 }
 void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
   VarType Type = getCurrVarType();
-  if (Type.Kind == VarKind::Invalid) {
-    std::cout << "Invalid Type on " << VarStack[VarStack.size() - 1].Id << "\n";
-  }
   assert(Type.Kind != VarKind::Invalid);
   // TODO: Check assignment types and write CurrentVal
   size_t NewSize = OverwriteStack.back();
   OverwriteStack.pop_back();
   while (VarStack.size() > NewSize) {
-    // TODO: write value here
     VarInfo Curr = std::move(VarStack.back());
     VarStack.pop_back();
-    std::cout << "Popping " << Curr.Id << " with Kind: " << static_cast<size_t>(Curr.Val.Type.Kind) << '\n';
+    std::cout << "Popping " << Curr.Id
+              << " with Kind: " << static_cast<size_t>(Curr.Val.Type.Kind)
+              << '\n';
     if (VarStack.empty()) {
       auto It = CurrentArchVals.find(Curr.Id);
       assert(It != CurrentArchVals.end());
@@ -588,7 +455,8 @@ void DSLListener::enterMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {
     std::string Spell = Id->toString();
     const VarVal &Val = getVarVal(Spell);
     assert(Val.Type.Kind != VarKind::Invalid);
-    std::cout << "Pushing " << Spell << " with Kind " << static_cast<size_t>(Val.Type.Kind) << '\n';
+    std::cout << "Pushing " << Spell << " with Kind "
+              << static_cast<size_t>(Val.Type.Kind) << '\n';
     VarStack.push_back(VarInfo{Spell, Val});
   }
 }
@@ -608,8 +476,8 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
       throw std::runtime_error{"Unknown type: " + TypeName};
     }
     size_t TypeIdx = It->getValue();
-    assert(TypeIdx < TypeMembers.size());
-    CurrentDefVal = VarVal{TypeIdx, TypeMembers[TypeIdx]};
+    assert(TypeIdx < TypeDefaults.size());
+    CurrentDefVal = VarVal{TypeIdx, TypeDefaults[TypeIdx]};
   } else if (T->listType() != nullptr) {
     // TODO:
   } else {
@@ -628,7 +496,8 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   VarInfo Info{std::move(CurrentDefID), std::move(CurrentDefVal)};
   CurrentDefID = "";
   CurrentArchVals.insert(std::make_pair(Info.Id, Info.Val));
-  std::cout << "Pushing " << Info.Id << " with kind " << static_cast<size_t>(CurrentArchVals[Info.Id].Type.Kind) << '\n';
+  std::cout << "Pushing " << Info.Id << " with kind "
+            << static_cast<size_t>(CurrentArchVals[Info.Id].Type.Kind) << '\n';
   VarStack.push_back(std::move(Info));
 }
 void DSLListener::exitType(DSLGrammarParser::TypeContext *T) {
@@ -642,7 +511,7 @@ void DSLListener::exitListType(DSLGrammarParser::ListTypeContext *LT) {
   // TODO:
 }
 
-DSLListener::VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
+VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
   switch (Kind) {
   case VarKind::Invalid:
     llvm_unreachable("");
@@ -651,21 +520,22 @@ DSLListener::VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx
     return VarVal::createUninitialized(VarType{Kind});
   case VarKind::Obj:
     assert(ObjTypeIdx != VarVal::InvalidTypeIdx);
-    return VarVal{ObjTypeIdx, TypeMembers[ObjTypeIdx]};
+    return VarVal{ObjTypeIdx, TypeDefaults[ObjTypeIdx]};
   case VarKind::List:
     llvm_unreachable("List of lists not implemented");
   case VarKind::Ref:
-    return VarVal{ObjTypeIdx, nullptr};
+    return VarVal{ObjTypeIdx, ""};
   }
-  
+
   assert(false);
 }
 
 void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
   // TODO:
-  VarVal& Curr = VarStack.back().Val;
+  VarVal &Curr = VarStack.back().Val;
   if (Curr.Type.Kind == VarKind::List) {
-    VarStack.push_back(VarInfo{"", getDefaultValue(Curr.Type.ListKind, Curr.Type.ListObjTypeIdx)});
+    VarStack.push_back(VarInfo{
+        "", getDefaultValue(Curr.Type.ListKind, Curr.Type.ListObjTypeIdx)});
   }
 }
 void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
@@ -673,18 +543,58 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
   // TODO: Maybe for every object that is in a list create an Object with empty
   // ID? Every empty ID would be assumed to be part of a list (Assert that the
   // Object on the stack before it is a list)
+  VarInfo &CurrInfo = VarStack.back();
+  VarVal &Curr = CurrInfo.Val;
   if (auto *Int = Expr->INT()) {
-    VarInfo& CurrInfo = VarStack.back();
-    VarVal& Curr = CurrInfo.Val;
     if (Curr.Type.Kind != VarKind::Int) {
       throw std::runtime_error{CurrInfo.Id + " is not an int"};
     }
     Curr = VarVal{static_cast<int64_t>(stoi(Int->toString()))};
     std::cout << "INT: " << Int->toString() << '\n';
   } else if (auto *Bool = Expr->BOOL()) {
+    if (Curr.Type.Kind != VarKind::Bool) {
+      throw std::runtime_error{CurrInfo.Id + " is not a bool"};
+    }
+
+    std::string Spell = Bool->toString();
+    bool B;
+    if (Spell == "true") {
+      B = true;
+    } else {
+      assert(Spell == "false");
+      B = false;
+    }
+    Curr = VarVal{B};
     std::cout << "BOOL: " << Bool->toString() << '\n';
   } else if (auto *Id = Expr->ID()) {
-    // TODO: reference or value
+    std::string Spell = Id->toString();
+    auto It = CurrentArchVals.find(Spell);
+    if (It == CurrentArchVals.end()) {
+      throw std::runtime_error{"Undefined reference to " + Spell};
+    }
+    
+    const VarVal& GotVal = It->second;
+    const VarType &GotType = GotVal.Type;
+
+    if (Curr.Type.Kind == VarKind::Ref) {
+      if (GotType.Kind != VarKind::Obj) {
+        throw std::runtime_error{
+            "Expected an object type but got " +
+            std::to_string(static_cast<size_t>(GotType.Kind))};
+      }
+      if (GotType.ObjTypeIdx != Curr.Type.ObjTypeIdx) {
+        throw std::runtime_error{"Expected Object Type " +
+                                 std::to_string(Curr.Type.ObjTypeIdx) +
+                                 " but got " + std::to_string(GotType.ObjTypeIdx)};
+      }
+
+      Curr = VarVal{GotType.ObjTypeIdx, std::move(Spell)};
+    } else {
+      if (GotType != Curr.Type) {
+        throw std::runtime_error{"Expected type " + std::to_string(static_cast<size_t>(Curr.Type.Kind)) + " but got " + std::to_string(static_cast<size_t>(GotType.Kind)) + "THIS MAY ALSO HAVE DIFFERENT OBJECT TYPES"};
+      }
+      Curr = GotVal;
+    }
     std::cout << "ID: " << Id->toString() << '\n';
   } else if (auto *Lst = Expr->list()) {
     std::cout << "List: " << Lst->toString() << '\n';
@@ -694,7 +604,7 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
 
   if (VarStack.back().Id == "") {
     assert(VarStack.size() > 1);
-    VarVal& List = VarStack[VarStack.size() - 2].Val;
+    VarVal &List = VarStack[VarStack.size() - 2].Val;
     assert(List.Type.Kind == VarKind::List);
     List.LstVal.Vals.push_back(std::move(VarStack.back().Val));
     VarStack.pop_back();
@@ -727,6 +637,18 @@ void DSLListener::visitTerminal(antlr4::tree::TerminalNode *Term) {
 }
 void DSLListener::visitErrorNode(antlr4::tree::ErrorNode *Err) {
   // TODO:
+}
+
+Vec<DSLArchData> getDSLArchData(const char *Filename) {
+  std::ifstream Stream{Filename};
+  antlr4::ANTLRInputStream In{Stream};
+  DSLGrammarLexer Lexer{&In};
+  antlr4::CommonTokenStream Toks{&Lexer};
+  DSLGrammarParser Parser{&Toks};
+  antlr4::tree::ParseTree *Tree = Parser.translationUnit();
+  DSLListener Listener;
+  antlr4::tree::ParseTreeWalker::DEFAULT.walk(&Listener, Tree);
+  return Listener.getArchData();
 }
 
 RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {

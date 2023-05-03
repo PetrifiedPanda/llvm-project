@@ -5,6 +5,8 @@
 
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 
+#include "DSL.h"
+
 namespace llvm {
 
 struct RISCVDynSubtargetData {
@@ -27,6 +29,13 @@ struct RISCVDynSubtargetData {
   RISCVDynSubtargetData(const RISCVDynSubtargetData &) = delete;
   RISCVDynSubtargetData(RISCVDynSubtargetData &&) = default;
 };
+
+struct DSLArchData {
+  std::string Name;
+  IdentifierMap<VarVal> Vals;
+};
+
+Vec<DSLArchData> getDSLArchData(const char* Filename);
 
 RISCVDynSubtargetData getDynSubtargetData(const char* Filename);
 

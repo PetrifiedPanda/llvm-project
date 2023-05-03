@@ -51,7 +51,7 @@ arch Rocket {
     // Later definitions for the given elements will overwrite these
     RocketUnitB.AssociatedWrites = [{Writes = [WriteJmp, WriteJal, WriteJalr, WriteJmpReg]}],
     
-    RocketUnitALU.AssociatedWrites = [WriteIALU32, WriteIALU, WriteShiftImm32, WriteShiftImm, WriteShiftReg32, WriteShiftReg],
+    RocketUnitALU.AssociatedWrites = [{Writes = [WriteIALU32, WriteIALU, WriteShiftImm32, WriteShiftImm, WriteShiftReg32, WriteShiftReg]}],
     
     RocketUnitIMul.AssociatedWrites = [
         {WriteRes.Latency = 4, Writes = [WriteIMul, WriteIMul32]}
@@ -60,13 +60,13 @@ arch Rocket {
     RocketUnitIDiv.AssociatedWrites = [
         // ResourceCycles == ResourceCycles entry for this resource
         // If a write uses multiple resources it will be present in multiple AssociatedWrites
-        {WriteRes = {ResourceCycles = 34, Latency = 34,}, Writes = [WriteIdiv32],},
+        {WriteRes = {ResourceCycles = 34, Latency = 34,}, Writes = [WriteIDiv32],},
         {WriteRes = {ResourceCycles = 33, Latency = 33,}, Writes = [WriteIDiv],},
     ],
 
     RocketUnitMem.AssociatedWrites = [
         // WriteRes will just be default if not set
-        {Writes = [WriteSTB, WriteSTH, WriteSTW, WriteSTD, WriteFST32, WrieFST64]},
+        {Writes = [WriteSTB, WriteSTH, WriteSTW, WriteSTD, WriteFST32, WriteFST64]},
         {WriteRes.Latency = 3, Writes = [WriteLDB, WriteLDH]},
         {WriteRes.Latency = 2, Writes = [WriteLDW, WriteLDD, WriteFLD32, WriteFLD64, WriteAtomicW, WriteAtomicD, WriteAtomicLDW, WriteAtomicLDD]},
         {Writes = [WriteAtomicSTW, WriteAtomicSTD],},
@@ -75,14 +75,14 @@ arch Rocket {
     RocketUnitFPALU.AssociatedWrites = [
         {WriteRes.Latency = 4, Writes = [WriteFAdd32, WriteFSGNJ32, WriteFMinMax32],},
         {WriteRes.Latency = 6, Writes = [WriteFAdd64, WriteFSGNJ64, WriteFMinMax64],},
-        {WriteRes.Latency = 2, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF32ToF64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovF32ToI32, WriteFMovI32ToF32, WriteFMovF64ToI64, WriteFMovI64ToF64],},
+        {WriteRes.Latency = 2, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteFCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF32ToF64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovF32ToI32, WriteFMovI32ToF32, WriteFMovF64ToI64, WriteFMovI64ToF64],},
         {WriteRes.Latency = 5, Writes = [WriteFMul32, WriteFMA32]},
         {WriteRes.Latency = 7, Writes = [WriteFMul64, WriteFMA64]},
     ],
 
     RocketUnitFPDivSqrt.AssociatedWrites = [
         // The first and second entry could be merged, but I wanted to maintain similarity with the tablegen file
-        {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFDiv32, WriteFPDiv64]},
+        {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFDiv32, WriteFDiv64]},
         {WriteRes = {Latency = 20, ResourceCycles = 20}, Writes = [WriteFSqrt32]},
         {WriteRes = {Latency = 25, ResourceCycles = 25}, Writes = [WriteFSqrt64]},
     ],
@@ -179,7 +179,7 @@ arch SiFive7 {
     MispredictPenalty = 3,
     CompleteModel = false,
     UnsupportedFeatures = [HasStdExtZbkb, HasStdExtZbkc, HasStdExtZbkx,
-                           HasStdExtZknd, HasStdExtZkne, HasStdextZknh,
+                           HasStdExtZknd, HasStdExtZkne, HasStdExtZknh,
                            HasStdExtZksed, HasStdExtZksh, HasStdExtZkr,
                            HasVInstructions],
 
@@ -226,7 +226,7 @@ arch SiFive7 {
         {WriteRes.Latency = 7, Writes = [WriteFAdd64, WriteFMul64, WriteFMA64]},
         {WriteRes.Latency = 3, Writes = [WriteFSGNJ64, WriteFMinMax64]},
         {WriteRes = {Latency = 56, ResourceCycles = 1}, Writes = [WriteFDiv64, WriteFSqrt64]},
-        {WriteRes.Latency = 3, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteFCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFcvtF32ToF64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovI32ToF32, WriteFMovF32ToI32, WriteFMovI64ToF64, WriteFMovF64ToI64]},
+        {WriteRes.Latency = 3, Writes = [WriteFCvtI32ToF32, WriteFCvtI32ToF64, WriteFCvtI64ToF32, WriteFCvtI64ToF64, WriteFCvtF32ToI32, WriteFCvtF32ToI64, WriteFCvtF32ToF64, WriteFCvtF64ToI32, WriteFCvtF64ToI64, WriteFCvtF64ToF32, WriteFClass32, WriteFClass64, WriteFCmp32, WriteFCmp64, WriteFMovI32ToF32, WriteFMovF32ToI32, WriteFMovI64ToF64, WriteFMovF64ToI64]},
         {Writes = [WriteCSR]},
     ],
 
