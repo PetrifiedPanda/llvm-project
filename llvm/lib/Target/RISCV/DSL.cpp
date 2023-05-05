@@ -76,6 +76,7 @@ void ObjectVal::writeMember(const std::string &Id, VarVal &&Val) {
 
 VarVal VarVal::createUninitialized(VarType Type) {
   VarVal Res;
+  // TODO: memset might not be necessary
   memset(&Res, 0, sizeof Res);
   Res.Type = Type;
   Res.Initialized = false;
@@ -88,11 +89,11 @@ VarVal::VarVal(size_t TypeIdx, const ObjectVal &Val)
 }
 
 VarVal::VarVal(size_t RefTypeIdx, std::string&& Key)
-    : Type{VarKind::Ref, RefTypeIdx}, Key{std::move(Key)} {
+    : Type{VarKind::Ref, RefTypeIdx}, Key{std::move(Key)}, Initialized{true} {
   assert(RefTypeIdx != InvalidTypeIdx);
 }
 
-VarVal::VarVal(const VarVal &Other) : Type{Other.Type} {
+VarVal::VarVal(const VarVal &Other) : Type{Other.Type}, Initialized{Other.Initialized} {
   switch (Type.Kind) {
   case VarKind::Invalid:
     break;
@@ -112,7 +113,6 @@ VarVal::VarVal(const VarVal &Other) : Type{Other.Type} {
     new (&Key) std::string(Other.Key);
     break;
   }
-  Initialized = Other.Initialized;
 }
 
 VarVal::~VarVal() {

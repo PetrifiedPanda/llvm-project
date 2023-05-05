@@ -22,7 +22,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   }};
   inline static const ObjectVal DefaultAssociatedWrite = {{
       {"WriteRes", VarVal(2, DefaultWriteRes)},
-      {"Writes", VarVal{VarKind::Obj, 4, std::vector<VarVal>{}}},
+      {"Writes", VarVal{VarKind::Ref, 4, std::vector<VarVal>{}}},
   }};
   inline static const ObjectVal DefaultProcResource = {{
       {"NumUnits", VarVal{static_cast<int64_t>(1)}},
@@ -31,8 +31,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
   }};
   inline static const ObjectVal DefaultReadAdvance = {{
-      {"Cycles", VarVal(VarVal::createUninitialized(
-                     VarType{VarKind::Int}))}, // Uninitialized
+      {"Cycles", VarVal::createUninitialized(VarType{VarKind::Int})},
       {"ValidWrites",
        VarVal{VarKind::Ref, 4, std::vector<VarVal>{}}}, // list<SchedWrite>
   }};
@@ -49,7 +48,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   }};
 
   inline static const ObjectVal DefaultRISCVFeature = {{}};
-  // TODO: ProcResGroup
+  // TODO: maybe add constants for these indices
   inline static const StringMap<size_t> TypeMap = {
       {"AssociatedWrite", 0}, {"ProcResource", 1}, {"WriteRes", 2},
       {"ReadAdvance", 3},     {"SchedWrite", 4},   {"ProcResGroup", 5},
@@ -80,16 +79,18 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"HighLatency", VarVal{static_cast<int64_t>(10)}},
       {"MispredictPenalty", VarVal{static_cast<int64_t>(10)}},
       {"CompleteModel", VarVal{false}},
-      {"UnsupportedFeatures", VarVal{VarKind::Obj, 7, std::vector<VarVal>{}}},
+      {"UnsupportedFeatures", VarVal{VarKind::Ref, 7, std::vector<VarVal>{}}},
       {"NoProcResource",
        VarVal{1, DefaultProcResource}}, // TODO: not sure if this should be
                                         // DefaultProcResource
-      // SchedReads TODO: check if all reads from RISCVSchedule.td are here
+      {"ReadSFB", VarVal{6, DefaultSchedRead}},
       {"ReadJmp", VarVal{6, DefaultSchedRead}},
       {"ReadJalr", VarVal{6, DefaultSchedRead}},
       {"ReadCSR", VarVal{6, DefaultSchedRead}},
-      {"ReadStoreData", VarVal{6, DefaultSchedRead}},
       {"ReadMemBase", VarVal{6, DefaultSchedRead}},
+      {"ReadFMemBase", VarVal{6, DefaultSchedRead}},
+      {"ReadStoreData", VarVal{6, DefaultSchedRead}},
+      {"ReadFStoreData", VarVal{6, DefaultSchedRead}},
       {"ReadIALU", VarVal{6, DefaultSchedRead}},
       {"ReadIALU32", VarVal{6, DefaultSchedRead}},
       {"ReadShiftImm", VarVal{6, DefaultSchedRead}},
@@ -108,41 +109,57 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"ReadAtomicLDD", VarVal{6, DefaultSchedRead}},
       {"ReadAtomicSTW", VarVal{6, DefaultSchedRead}},
       {"ReadAtomicSTD", VarVal{6, DefaultSchedRead}},
-      {"ReadFStoreData", VarVal{6, DefaultSchedRead}},
-      {"ReadFMemBase", VarVal{6, DefaultSchedRead}},
+      {"ReadFAdd16", VarVal{6, DefaultSchedRead}},
       {"ReadFAdd32", VarVal{6, DefaultSchedRead}},
       {"ReadFAdd64", VarVal{6, DefaultSchedRead}},
+      {"ReadFMul16", VarVal{6, DefaultSchedRead}},
       {"ReadFMul32", VarVal{6, DefaultSchedRead}},
       {"ReadFMul64", VarVal{6, DefaultSchedRead}},
+      {"ReadFMA16", VarVal{6, DefaultSchedRead}},
       {"ReadFMA32", VarVal{6, DefaultSchedRead}},
       {"ReadFMA64", VarVal{6, DefaultSchedRead}},
+      {"ReadFDiv16", VarVal{6, DefaultSchedRead}},
       {"ReadFDiv32", VarVal{6, DefaultSchedRead}},
       {"ReadFDiv64", VarVal{6, DefaultSchedRead}},
+      {"ReadFSqrt16", VarVal{6, DefaultSchedRead}},
       {"ReadFSqrt32", VarVal{6, DefaultSchedRead}},
       {"ReadFSqrt64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCmp16", VarVal{6, DefaultSchedRead}},
       {"ReadFCmp32", VarVal{6, DefaultSchedRead}},
       {"ReadFCmp64", VarVal{6, DefaultSchedRead}},
+      {"ReadFSGNJ16", VarVal{6, DefaultSchedRead}},
       {"ReadFSGNJ32", VarVal{6, DefaultSchedRead}},
       {"ReadFSGNJ64", VarVal{6, DefaultSchedRead}},
+      {"ReadFMinMax16", VarVal{6, DefaultSchedRead}},
       {"ReadFMinMax32", VarVal{6, DefaultSchedRead}},
       {"ReadFMinMax64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF16ToI32", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF16ToI64", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtF32ToI32", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtF32ToI64", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtF64ToI32", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtF64ToI64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtI32ToF16", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtI32ToF32", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtI32ToF64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtI64ToF16", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtI64ToF32", VarVal{6, DefaultSchedRead}},
       {"ReadFCvtI64ToF64", VarVal{6, DefaultSchedRead}},
-      {"ReadFCvtF32ToF64", VarVal{6, DefaultSchedRead}},
-      {"ReadFCvtF64ToF32", VarVal{6, DefaultSchedRead}},
+      {"ReadFMovF16ToI16", VarVal{6, DefaultSchedRead}},
+      {"ReadFMovI16ToF16", VarVal{6, DefaultSchedRead}},
       {"ReadFMovF32ToI32", VarVal{6, DefaultSchedRead}},
       {"ReadFMovI32ToF32", VarVal{6, DefaultSchedRead}},
       {"ReadFMovF64ToI64", VarVal{6, DefaultSchedRead}},
       {"ReadFMovI64ToF64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF32ToF64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF64ToF32", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF16ToF32", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF32ToF16", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF16ToF64", VarVal{6, DefaultSchedRead}},
+      {"ReadFCvtF64ToF16", VarVal{6, DefaultSchedRead}},
+      {"ReadFClass16", VarVal{6, DefaultSchedRead}},
       {"ReadFClass32", VarVal{6, DefaultSchedRead}},
       {"ReadFClass64", VarVal{6, DefaultSchedRead}},
-      {"ReadSFB", VarVal{6, DefaultSchedRead}},
 
       // RISCV Features
       {"HasStdExtZbkb", VarVal{7, DefaultRISCVFeature}},
@@ -261,7 +278,7 @@ class DSLListener final : public DSLGrammarBaseListener {
   Vec<IdentifierMap<VarVal>> PrevArchVals;
   IdentifierMap<VarVal> CurrentArchVals;
   Vec<VarInfo> VarStack;
-  // Stores the size of VarStack before this overwrite
+  // Stores the size of VarStack before current overwrite
   Vec<size_t> OverwriteStack;
   std::string CurrentDefID = "";
   int64_t CurrentArchIdx = -1;
@@ -326,6 +343,7 @@ private:
   VarType getCurrVarType() const;
   const std::string *getCurrVarSpell() const;
   VarVal getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const;
+  void writeVal(const std::string& Id, VarVal&& Val);
 };
 
 void DSLListener::enterTranslationUnit(
@@ -375,13 +393,14 @@ void DSLListener::exitArchitectureDefinition(
 }
 
 void DSLListener::enterDefinition(DSLGrammarParser::DefinitionContext *Def) {
-  // TODO:
+  // Set CurrentDefID for enterType
   CurrentDefID = Def->ID()->toString();
 }
 void DSLListener::exitDefinition(DSLGrammarParser::DefinitionContext *Def) {
-  // TODO:
-  std::cout << "Popping " << VarStack[VarStack.size() - 1].Id << '\n';
+  assert(VarStack.size() == 1);
+  VarInfo Curr = std::move(VarStack.back());
   VarStack.pop_back();
+  writeVal(Curr.Id, std::move(Curr.Val));
 }
 
 const VarVal &DSLListener::getVarVal(const std::string &Spell) const {
@@ -424,8 +443,15 @@ const std::string *DSLListener::getCurrVarSpell() const {
 
 void DSLListener::enterOverwrite(DSLGrammarParser::OverwriteContext *OW) {
   OverwriteStack.push_back(VarStack.size());
-  // TODO:
 }
+
+void DSLListener::writeVal(const std::string& Id, VarVal&& Val) {
+  auto It = CurrentArchVals.find(Id);
+  assert(It != CurrentArchVals.end());
+  // TODO: Type check
+  It->second = std::move(Val);
+}
+
 void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
   VarType Type = getCurrVarType();
   assert(Type.Kind != VarKind::Invalid);
@@ -435,13 +461,8 @@ void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
   while (VarStack.size() > NewSize) {
     VarInfo Curr = std::move(VarStack.back());
     VarStack.pop_back();
-    std::cout << "Popping " << Curr.Id
-              << " with Kind: " << static_cast<size_t>(Curr.Val.Type.Kind)
-              << '\n';
     if (VarStack.empty()) {
-      auto It = CurrentArchVals.find(Curr.Id);
-      assert(It != CurrentArchVals.end());
-      It->second = std::move(Curr.Val);
+      writeVal(Curr.Id, std::move(Curr.Val));
     } else {
       VarInfo &Prev = VarStack.back();
       assert(Prev.Val.Type.Kind == VarKind::Obj);
@@ -455,18 +476,15 @@ void DSLListener::enterMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {
     std::string Spell = Id->toString();
     const VarVal &Val = getVarVal(Spell);
     assert(Val.Type.Kind != VarKind::Invalid);
-    std::cout << "Pushing " << Spell << " with Kind "
-              << static_cast<size_t>(Val.Type.Kind) << '\n';
     VarStack.push_back(VarInfo{Spell, Val});
   }
 }
 void DSLListener::exitMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {}
 
-// This function assumes that this is always called after enterDefinition has
+// This method assumes that this is always called after enterDefinition has
 // set CurrentDefID
 void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   assert(CurrentDefID != "");
-  // TODO:
   VarVal CurrentDefVal;
   if (T->ID() != nullptr) {
     std::string TypeName = T->ID()->toString();
@@ -483,11 +501,9 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   } else {
     std::string Type = T->toString();
     if (Type == "bool") {
-      CurrentDefVal = VarVal::createUninitialized(
-          VarType{VarKind::Int, VarVal::InvalidTypeIdx});
+      CurrentDefVal = VarVal::createUninitialized(VarType{VarKind::Int});
     } else if (Type == "int") {
-      CurrentDefVal = VarVal::createUninitialized(
-          VarType{VarKind::Int, VarVal::InvalidTypeIdx});
+      CurrentDefVal = VarVal::createUninitialized(VarType{VarKind::Int});
     } else {
       llvm_unreachable("This code should be unreachable");
     }
@@ -496,8 +512,6 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   VarInfo Info{std::move(CurrentDefID), std::move(CurrentDefVal)};
   CurrentDefID = "";
   CurrentArchVals.insert(std::make_pair(Info.Id, Info.Val));
-  std::cout << "Pushing " << Info.Id << " with kind "
-            << static_cast<size_t>(CurrentArchVals[Info.Id].Type.Kind) << '\n';
   VarStack.push_back(std::move(Info));
 }
 void DSLListener::exitType(DSLGrammarParser::TypeContext *T) {
@@ -550,7 +564,6 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
       throw std::runtime_error{CurrInfo.Id + " is not an int"};
     }
     Curr = VarVal{static_cast<int64_t>(stoi(Int->toString()))};
-    std::cout << "INT: " << Int->toString() << '\n';
   } else if (auto *Bool = Expr->BOOL()) {
     if (Curr.Type.Kind != VarKind::Bool) {
       throw std::runtime_error{CurrInfo.Id + " is not a bool"};
@@ -565,7 +578,6 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
       B = false;
     }
     Curr = VarVal{B};
-    std::cout << "BOOL: " << Bool->toString() << '\n';
   } else if (auto *Id = Expr->ID()) {
     std::string Spell = Id->toString();
     auto It = CurrentArchVals.find(Spell);
@@ -595,11 +607,10 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
       }
       Curr = GotVal;
     }
-    std::cout << "ID: " << Id->toString() << '\n';
   } else if (auto *Lst = Expr->list()) {
-    std::cout << "List: " << Lst->toString() << '\n';
+    // TODO: we may not need this
   } else if (auto *Obj = Expr->obj()) {
-    std::cout << "Object: " << Obj->toString() << '\n';
+    // TODO: we may not need this
   }
 
   if (VarStack.back().Id == "") {
