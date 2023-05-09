@@ -4,6 +4,10 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <iostream>
+
+#include "llvm/Support/ErrorHandling.h"
+
 namespace llvm {
 
 VarType::VarType(VarKind Kind) : Kind{Kind} {
@@ -48,11 +52,170 @@ bool VarType::operator!=(const VarType &Other) const {
   return !(*this == Other);
 }
 
-ObjectVal::ObjectVal(MemberMap &&Members) : Members{std::move(Members)} {}
+VarVal VarVal::createUninitialized(VarType Type) {
+  VarVal Res;
+  // TODO: memset might not be necessary
+  memset(&Res, 0, sizeof Res);
+  Res.Type = Type;
+  Res.Initialized = false;
+  return Res;
+}
 
-void ObjectVal::writeMember(const std::string &Id, VarVal &&Val) {
-  auto It = Members.find(Id);
-  assert(It != Members.end());
+VarVal::VarVal(size_t TypeIdx, const IdentifierMap<VarVal> &Val)
+    : Type{VarKind::Obj, TypeIdx}, ObjVal{Val}, Initialized{true} {
+  assert(TypeIdx != VarType::InvalidTypeIdx);
+}
+
+VarVal::VarVal(size_t TypeIdx, IdentifierMap<VarVal> &&Val)
+    : Type{VarKind::Obj, TypeIdx}, ObjVal{std::move(Val)}, Initialized{true} {
+  assert(TypeIdx != VarType::InvalidTypeIdx);
+}
+
+VarVal::VarVal(size_t RefTypeIdx, std::string &&Key)
+    : Type{VarKind::Ref, RefTypeIdx}, RefKey{std::move(Key)}, Initialized{true} {
+  assert(RefTypeIdx != VarType::InvalidTypeIdx);
+}
+
+VarVal::VarVal(const VarVal &Other)
+    : Type{Other.Type}, Initialized{Other.Initialized} {
+  switch (Type.Kind) {
+  case VarKind::Invalid:
+    break;
+  case VarKind::Bool:
+    BoolVal = Other.BoolVal;
+    break;
+  case VarKind::Int:
+    IntVal = Other.IntVal;
+    break;
+  case VarKind::Obj:
+    new (&ObjVal) IdentifierMap<VarVal>(Other.ObjVal);
+    break;
+  case VarKind::List:
+    new (&LstVal) std::vector(Other.LstVal);
+    break;
+  case VarKind::Ref:
+    new (&RefKey) std::string(Other.RefKey);
+    break;
+  }
+}
+
+VarVal::~VarVal() {
+  switch (Type.Kind) {
+  case VarKind::Invalid:
+  case VarKind::Bool:
+  case VarKind::Int:
+    break;
+  case VarKind::Obj:
+    ObjVal.~IdentifierMap<VarVal>();
+    break;
+  case VarKind::List:
+    LstVal.~vector();
+    break;
+  case VarKind::Ref:
+    RefKey.~basic_string();
+    break;
+  }
+}
+
+// TODO: assigning to garbage memory error
+VarVal &VarVal::operator=(const VarVal &Other) {
+  if (this == &Other) {
+    return *this;
+  }
+  if (Type.Kind == VarKind::Obj) {
+    ObjVal.~IdentifierMap<VarVal>();
+  } else if (Type.Kind == VarKind::List) {
+    LstVal.~vector();
+  } else if (Type.Kind == VarKind::Ref) {
+    RefKey.~basic_string();
+  }
+  Initialized = Other.Initialized;
+  Type = Other.Type;
+  switch (Other.Type.Kind) {
+  case VarKind::Invalid:
+    break;
+  case VarKind::Bool:
+    BoolVal = Other.BoolVal;
+    break;
+  case VarKind::Int:
+    IntVal = Other.IntVal;
+    break;
+  case VarKind::Obj:
+    new (&ObjVal) IdentifierMap<VarVal>(Other.ObjVal);
+    break;
+  case VarKind::List:
+    new (&LstVal) std::vector(Other.LstVal);
+    break;
+  case VarKind::Ref:
+    new (&RefKey) std::string(Other.RefKey);
+    break;
+  }
+  return *this;
+}
+// TODO: Make this work with self-assignment
+VarVal &VarVal::operator=(VarVal &&Other) {
+  if (this == &Other) {
+    return *this;
+  }
+  if (Type.Kind == VarKind::Obj) {
+    ObjVal.~IdentifierMap<VarVal>();
+  } else if (Type.Kind == VarKind::List) {
+    LstVal.~vector();
+  } else if (Type.Kind == VarKind::Ref) {
+    RefKey.~basic_string();
+  }
+  Initialized = Other.Initialized;
+  Type = Other.Type;
+  switch (Other.Type.Kind) {
+  case VarKind::Invalid:
+    break;
+  case VarKind::Bool:
+    BoolVal = Other.BoolVal;
+    break;
+  case VarKind::Int:
+    IntVal = Other.IntVal;
+    break;
+  case VarKind::Obj:
+    new (&ObjVal) IdentifierMap<VarVal>(std::move(Other.ObjVal));
+    break;
+  case VarKind::List:
+    new (&LstVal) std::vector(std::move(Other.LstVal));
+    break;
+  case VarKind::Ref:
+    new (&RefKey) std::string(std::move(Other.RefKey));
+    break;
+  }
+  return *this;
+}
+
+bool VarVal::operator==(const VarVal &Other) const {
+  if (Type != Other.Type) {
+    return false;
+  }
+
+  switch (Type.Kind) {
+  case VarKind::Invalid:
+    return true;
+  case VarKind::Bool:
+    return BoolVal == Other.BoolVal;
+  case VarKind::Int:
+    return IntVal == Other.IntVal;
+  case VarKind::Obj:
+    return ObjVal == Other.ObjVal;
+  case VarKind::List:
+    return LstVal == Other.LstVal;
+  case VarKind::Ref:
+    return RefKey == Other.RefKey;
+  }
+  llvm_unreachable("Unhandled VarKind");
+}
+
+bool VarVal::operator!=(const VarVal &Other) const { return !(*this == Other); }
+
+void VarVal::writeMember(const std::string &Id, VarVal &&Val) {
+  assert(Type.Kind == VarKind::Obj);
+  auto It = ObjVal.find(Id);
+  assert(It != ObjVal.end());
   VarVal &ToWrite = It->second;
   if (ToWrite.Type.Kind != Val.Type.Kind) {
     throw std::runtime_error{
@@ -72,136 +235,6 @@ void ObjectVal::writeMember(const std::string &Id, VarVal &&Val) {
     }
   }
   ToWrite = std::move(Val);
-}
-
-VarVal VarVal::createUninitialized(VarType Type) {
-  VarVal Res;
-  // TODO: memset might not be necessary
-  memset(&Res, 0, sizeof Res);
-  Res.Type = Type;
-  Res.Initialized = false;
-  return Res;
-}
-
-VarVal::VarVal(size_t TypeIdx, const ObjectVal &Val)
-    : Type{VarKind::Obj, TypeIdx}, ObjVal{Val}, Initialized{true} {
-  assert(TypeIdx != InvalidTypeIdx);
-}
-
-VarVal::VarVal(size_t RefTypeIdx, std::string&& Key)
-    : Type{VarKind::Ref, RefTypeIdx}, Key{std::move(Key)}, Initialized{true} {
-  assert(RefTypeIdx != InvalidTypeIdx);
-}
-
-VarVal::VarVal(const VarVal &Other) : Type{Other.Type}, Initialized{Other.Initialized} {
-  switch (Type.Kind) {
-  case VarKind::Invalid:
-    break;
-  case VarKind::Bool:
-    BoolVal = Other.BoolVal;
-    break;
-  case VarKind::Int:
-    IntVal = Other.IntVal;
-    break;
-  case VarKind::Obj:
-    new (&ObjVal) ObjectVal(Other.ObjVal);
-    break;
-  case VarKind::List:
-    new (&LstVal) ListVal(Other.LstVal);
-    break;
-  case VarKind::Ref:
-    new (&Key) std::string(Other.Key);
-    break;
-  }
-}
-
-VarVal::~VarVal() {
-  switch (Type.Kind) {
-  case VarKind::Invalid:
-  case VarKind::Bool:
-  case VarKind::Int:
-    break;
-  case VarKind::Obj:
-    ObjVal.~ObjectVal();
-    break;
-  case VarKind::List:
-    LstVal.~ListVal();
-    break;
-  case VarKind::Ref:
-    Key.~basic_string();
-    break;
-  }
-}
-
-// TODO: assigning to garbage memory error
-VarVal &VarVal::operator=(const VarVal &Other) {
-  if (this == &Other) {
-    return *this;
-  }
-  if (Type.Kind == VarKind::Obj) {
-    ObjVal.~ObjectVal();
-  } else if (Type.Kind == VarKind::List) {
-    LstVal.~ListVal();
-  } else if (Type.Kind == VarKind::Ref) {
-    Key.~basic_string();
-  }
-  Initialized = Other.Initialized;
-  Type = Other.Type;
-  switch (Other.Type.Kind) {
-  case VarKind::Invalid:
-    break;
-  case VarKind::Bool:
-    BoolVal = Other.BoolVal;
-    break;
-  case VarKind::Int:
-    IntVal = Other.IntVal;
-    break;
-  case VarKind::Obj:
-    new (&ObjVal) ObjectVal(Other.ObjVal);
-    break;
-  case VarKind::List:
-    new (&LstVal) ListVal(Other.LstVal);
-    break;
-  case VarKind::Ref:
-    new (&Key) std::string(Other.Key);
-    break;
-  }
-  return *this;
-}
-// TODO: Make this work with self-assignment
-VarVal &VarVal::operator=(VarVal &&Other) {
-  if (this == &Other) {
-    return *this;
-  }
-  if (Type.Kind == VarKind::Obj) {
-    ObjVal.~ObjectVal();
-  } else if (Type.Kind == VarKind::List) {
-    LstVal.~ListVal();
-  } else if (Type.Kind == VarKind::Ref) {
-    Key.~basic_string();
-  }
-  Initialized = Other.Initialized;
-  Type = Other.Type;
-  switch (Other.Type.Kind) {
-  case VarKind::Invalid:
-    break;
-  case VarKind::Bool:
-    BoolVal = Other.BoolVal;
-    break;
-  case VarKind::Int:
-    IntVal = Other.IntVal;
-    break;
-  case VarKind::Obj:
-    new (&ObjVal) ObjectVal(std::move(Other.ObjVal));
-    break;
-  case VarKind::List:
-    new (&LstVal) ListVal(std::move(Other.LstVal));
-    break;
-  case VarKind::Ref:
-    new (&Key) std::string(std::move(Other.Key));
-    break;
-  }
-  return *this;
 }
 
 } // namespace llvm

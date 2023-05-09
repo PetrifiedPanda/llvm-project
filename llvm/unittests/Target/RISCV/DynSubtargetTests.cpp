@@ -8,6 +8,27 @@
 
 using namespace llvm;
 
+static const IdentifierMap<VarVal> ExpectedRocket = {
+    {"IssueWidth", VarVal{static_cast<int64_t>(1)}},
+    {"LoadLatency", VarVal{static_cast<int64_t>(3)}},
+    {"MispredictPenalty", VarVal{static_cast<int64_t>(3)}},
+    {"CompleteModel", VarVal{false}},
+    {"UnsupportedFeatures", VarVal{VarKind::Ref, 7,
+                                   std::vector<VarVal>{
+                                       VarVal{7, "HasStdExtZbkb"},
+                                       VarVal{7, "HasStdExtZbkc"},
+                                       VarVal{7, "HasStdExtZbkx"},
+                                       VarVal{7, "HasStdExtZknd"},
+                                       VarVal{7, "HasStdExtZkne"},
+                                       VarVal{7, "HasStdExtZknh"},
+                                       VarVal{7, "HasStdExtZksed"},
+                                       VarVal{7, "HasStdExtZksh"},
+                                       VarVal{7, "HasStdExtZkr"},
+                                       VarVal{7, "HasVInstructions"},
+                                       VarVal{7, "HasVInstructionsI64"},
+                                   }}},
+};
+
 static void checkInt(const IdentifierMap<VarVal> &Vals, const char *Key,
                      int64_t Value) {
   const auto &Val = Vals.find(Key)->second;
@@ -29,15 +50,15 @@ static void checkRefLst(const VarVal &LstVal, const char **Ids, size_t Size,
   ASSERT_EQ(LstVal.Type.Kind, VarKind::List);
   ASSERT_EQ(LstVal.Type.ListKind, VarKind::Ref);
   ASSERT_EQ(LstVal.Type.ListObjTypeIdx, ObjTypeIdx);
-  const auto& Lst = LstVal.LstVal.Vals;
+  const auto &Lst = LstVal.LstVal;
   ASSERT_EQ(Lst.size(), Size);
 
   for (size_t I = 0; I < Size; ++I) {
     const auto &Ref = Lst[I];
     ASSERT_EQ(Ref.Type.Kind, VarKind::Ref);
     ASSERT_EQ(Ref.Type.ObjTypeIdx, ObjTypeIdx);
-    EXPECT_EQ(Ref.Key, Ids[I]);
-    EXPECT_NE(Vals.find(Ref.Key), Vals.end());
+    EXPECT_EQ(Ref.RefKey, Ids[I]);
+    EXPECT_NE(Vals.find(Ref.RefKey), Vals.end());
   }
 }
 
@@ -63,61 +84,64 @@ TEST(DynSubtargetTests, ReadFromFile) {
     checkInt(Rocket, "MispredictPenalty", 3);
     checkBool(Rocket, "CompleteModel", false);
 
-    const auto &Unsupported = Rocket.find("UnsupportedFeatures")->second;
+    const VarVal &Unsupported = Rocket.find("UnsupportedFeatures")->second;
+    ASSERT_EQ(Unsupported, ExpectedRocket.find("UnsupportedFeatures")->second);
     const char *RefStrings[] = {
         "HasStdExtZbkb",    "HasStdExtZbkc",       "HasStdExtZbkx",
         "HasStdExtZknd",    "HasStdExtZkne",       "HasStdExtZknh",
         "HasStdExtZksed",   "HasStdExtZksh",       "HasStdExtZkr",
         "HasVInstructions", "HasVInstructionsI64",
     };
-    checkRefLst(Unsupported, RefStrings, sizeof RefStrings / sizeof *RefStrings, Rocket, 7);
+    checkRefLst(Unsupported, RefStrings, sizeof RefStrings / sizeof *RefStrings,
+                Rocket, 7);
 
     const auto &RocketUnitALU = Rocket.find("RocketUnitALU")->second;
     ASSERT_EQ(RocketUnitALU.Type.Kind, VarKind::Obj);
-    checkInt(RocketUnitALU.ObjVal.Members, "NumUnits", 1);
-    checkInt(RocketUnitALU.ObjVal.Members, "BufferSize", -1);
+    checkInt(RocketUnitALU.ObjVal, "NumUnits", 1);
+    checkInt(RocketUnitALU.ObjVal, "BufferSize", -1);
 
     const auto &RocketUnitIMul = Rocket.find("RocketUnitIMul")->second;
     ASSERT_EQ(RocketUnitIMul.Type.Kind, VarKind::Obj);
-    checkInt(RocketUnitIMul.ObjVal.Members, "NumUnits", 1);
-    checkInt(RocketUnitIMul.ObjVal.Members, "BufferSize", 0);
+    checkInt(RocketUnitIMul.ObjVal, "NumUnits", 1);
+    checkInt(RocketUnitIMul.ObjVal, "BufferSize", 0);
 
     const auto &RocketUnitB = Rocket.find("RocketUnitB")->second;
     ASSERT_EQ(RocketUnitB.Type.Kind, VarKind::Obj);
-    checkInt(RocketUnitB.ObjVal.Members, "NumUnits", 1);
-    checkInt(RocketUnitB.ObjVal.Members, "BufferSize", 0);
+    checkInt(RocketUnitB.ObjVal, "NumUnits", 1);
+    checkInt(RocketUnitB.ObjVal, "BufferSize", 0);
     const auto &BAssocWrites =
-        RocketUnitB.ObjVal.Members.find("AssociatedWrites")->second;
+        RocketUnitB.ObjVal.find("AssociatedWrites")->second;
     ASSERT_EQ(BAssocWrites.Type.Kind, VarKind::List);
     ASSERT_EQ(BAssocWrites.Type.ListKind, VarKind::Obj);
-    ASSERT_EQ(BAssocWrites.Type.ListObjTypeIdx, 0);
+    ASSERT_EQ(BAssocWrites.Type.ListObjTypeIdx, 0u);
 
-    ASSERT_EQ(BAssocWrites.LstVal.Vals.size(), 1);
-    const auto &RBAssocWrite = BAssocWrites.LstVal.Vals[0];
+    ASSERT_EQ(BAssocWrites.LstVal.size(), 1u);
+    const auto &RBAssocWrite = BAssocWrites.LstVal[0];
     ASSERT_EQ(RBAssocWrite.Type.Kind, VarKind::Obj);
-    ASSERT_EQ(RBAssocWrite.Type.ObjTypeIdx, 0);
-    const auto &WriteRes = RBAssocWrite.ObjVal.Members.find("WriteRes")->second;
+    ASSERT_EQ(RBAssocWrite.Type.ObjTypeIdx, 0u);
+    const auto &WriteRes = RBAssocWrite.ObjVal.find("WriteRes")->second;
     // TODO: ResourceCycles
-    checkInt(WriteRes.ObjVal.Members, "Latency", 1);
-    checkInt(WriteRes.ObjVal.Members, "NumMicroOps", 1);
-    const auto &Writes = RBAssocWrite.ObjVal.Members.find("Writes")->second;
+    checkInt(WriteRes.ObjVal, "Latency", 1);
+    checkInt(WriteRes.ObjVal, "NumMicroOps", 1);
+    const auto &Writes = RBAssocWrite.ObjVal.find("Writes")->second;
     const char *WriteKeys[] = {
         "WriteJmp",
         "WriteJal",
         "WriteJalr",
         "WriteJmpReg",
     };
-    checkRefLst(Writes, WriteKeys, sizeof WriteKeys / sizeof *WriteKeys, Rocket, 4);
+    checkRefLst(Writes, WriteKeys, sizeof WriteKeys / sizeof *WriteKeys, Rocket,
+                4);
 
     const auto &ReadJmp = Rocket.find("ReadJmp")->second;
     ASSERT_EQ(ReadJmp.Type.Kind, VarKind::Obj);
-    const auto &ReadJmpRA = ReadJmp.ObjVal.Members.find("ReadAdvance")->second;
+    const auto &ReadJmpRA = ReadJmp.ObjVal.find("ReadAdvance")->second;
     ASSERT_EQ(ReadJmpRA.Type.Kind, VarKind::Obj);
-    checkInt(ReadJmpRA.ObjVal.Members, "Cycles", 0);
+    checkInt(ReadJmpRA.ObjVal, "Cycles", 0);
 
     const auto &UnusedRA = Rocket.find("UnusedRA")->second;
     ASSERT_EQ(UnusedRA.Type.Kind, VarKind::Obj);
-    checkInt(UnusedRA.ObjVal.Members, "Cycles", 1);
+    checkInt(UnusedRA.ObjVal, "Cycles", 1);
     // TODO:
   }
   const auto &RocketWithBadMuls = Got[1].Vals;

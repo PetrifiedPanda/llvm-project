@@ -14,40 +14,40 @@ using namespace antlr_dsl;
 
 // TODO: remove all unneeded overrides
 class DSLListener final : public DSLGrammarBaseListener {
-  inline static const ObjectVal DefaultWriteRes = {{
+  inline static const IdentifierMap<VarVal> DefaultWriteRes = {
       {"ResourceCycles",
-       VarVal{VarKind::Int, VarVal::InvalidTypeIdx, std::vector<VarVal>{}}},
+       VarVal{VarKind::Int, VarType::InvalidTypeIdx, std::vector<VarVal>{}}},
       {"Latency", VarVal(static_cast<int64_t>(1))},
       {"NumMicroOps", VarVal(static_cast<int64_t>(1))},
-  }};
-  inline static const ObjectVal DefaultAssociatedWrite = {{
+  };
+  inline static const IdentifierMap<VarVal> DefaultAssociatedWrite = {
       {"WriteRes", VarVal(2, DefaultWriteRes)},
       {"Writes", VarVal{VarKind::Ref, 4, std::vector<VarVal>{}}},
-  }};
-  inline static const ObjectVal DefaultProcResource = {{
+  };
+  inline static const IdentifierMap<VarVal> DefaultProcResource = {
       {"NumUnits", VarVal{static_cast<int64_t>(1)}},
       {"Super", VarVal{1, ""}},
       {"BufferSize", VarVal{static_cast<int64_t>(-1)}},
       {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
-  }};
-  inline static const ObjectVal DefaultReadAdvance = {{
+  };
+  inline static const IdentifierMap<VarVal> DefaultReadAdvance = {
       {"Cycles", VarVal::createUninitialized(VarType{VarKind::Int})},
       {"ValidWrites",
        VarVal{VarKind::Ref, 4, std::vector<VarVal>{}}}, // list<SchedWrite>
-  }};
+  };
 
-  inline static const ObjectVal DefaultProcResGroup = {{
+  inline static const IdentifierMap<VarVal> DefaultProcResGroup = {
       {"Resources", VarVal{VarKind::Ref, 1, std::vector<VarVal>{}}},
       {"AssociatedWrites", VarVal{VarKind::Obj, 0, std::vector<VarVal>{}}},
-  }};
+  };
 
-  inline static const ObjectVal DefaultSchedWrite = {{}};
+  inline static const IdentifierMap<VarVal> DefaultSchedWrite = {};
 
-  inline static const ObjectVal DefaultSchedRead = {{
+  inline static const IdentifierMap<VarVal> DefaultSchedRead = {
       {"ReadAdvance", VarVal(3, DefaultReadAdvance)},
-  }};
+  };
 
-  inline static const ObjectVal DefaultRISCVFeature = {{}};
+  inline static const IdentifierMap<VarVal> DefaultRISCVFeature = {};
   // TODO: maybe add constants for these indices
   inline static const StringMap<size_t> TypeMap = {
       {"AssociatedWrite", 0}, {"ProcResource", 1}, {"WriteRes", 2},
@@ -55,7 +55,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"SchedRead", 6},       {"RISCVFeature", 7},
   };
 
-  inline static const Vec<ObjectVal> TypeDefaults = {
+  inline static const Vec<IdentifierMap<VarVal>> TypeDefaults = {
       DefaultAssociatedWrite,
 
       DefaultProcResource,
@@ -418,7 +418,7 @@ const VarVal &DSLListener::getVarVal(const std::string &Spell) const {
   if (Curr.Type.Kind != VarKind::Obj) {
     throw std::runtime_error{"Expected object type"};
   }
-  const auto &ToSearch = Curr.ObjVal.Members;
+  const auto &ToSearch = Curr.ObjVal;
   auto Found = ToSearch.find(Spell);
   if (Found == ToSearch.end()) {
     // TODO: correct error
@@ -431,7 +431,7 @@ VarType DSLListener::getCurrVarType() const {
   if (VarStack.size() != 0) {
     return VarStack[VarStack.size() - 1].Val.Type;
   }
-  return {VarKind::Invalid, VarVal::InvalidTypeIdx};
+  return {VarKind::Invalid, VarType::InvalidTypeIdx};
 }
 
 const std::string *DSLListener::getCurrVarSpell() const {
@@ -466,7 +466,7 @@ void DSLListener::exitOverwrite(DSLGrammarParser::OverwriteContext *OW) {
     } else {
       VarInfo &Prev = VarStack.back();
       assert(Prev.Val.Type.Kind == VarKind::Obj);
-      Prev.Val.ObjVal.writeMember(Curr.Id, std::move(Curr.Val));
+      Prev.Val.writeMember(Curr.Id, std::move(Curr.Val));
     }
   }
 }
@@ -533,7 +533,7 @@ VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
   case VarKind::Int:
     return VarVal::createUninitialized(VarType{Kind});
   case VarKind::Obj:
-    assert(ObjTypeIdx != VarVal::InvalidTypeIdx);
+    assert(ObjTypeIdx != VarType::InvalidTypeIdx);
     return VarVal{ObjTypeIdx, TypeDefaults[ObjTypeIdx]};
   case VarKind::List:
     llvm_unreachable("List of lists not implemented");
@@ -617,7 +617,7 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
     assert(VarStack.size() > 1);
     VarVal &List = VarStack[VarStack.size() - 2].Val;
     assert(List.Type.Kind == VarKind::List);
-    List.LstVal.Vals.push_back(std::move(VarStack.back().Val));
+    List.LstVal.push_back(std::move(VarStack.back().Val));
     VarStack.pop_back();
   }
 }
@@ -663,14 +663,8 @@ Vec<DSLArchData> getDSLArchData(const char *Filename) {
 }
 
 RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {
-  std::ifstream Stream{Filename};
-  antlr4::ANTLRInputStream In{Stream};
-  DSLGrammarLexer Lexer{&In};
-  antlr4::CommonTokenStream Toks{&Lexer};
-  DSLGrammarParser Parser{&Toks};
-  antlr4::tree::ParseTree *Tree = Parser.translationUnit();
-  DSLListener Listener;
-  antlr4::tree::ParseTreeWalker::DEFAULT.walk(&Listener, Tree);
+  auto ArchData = getDSLArchData(Filename);
+  RISCVDynSubtargetData Res;
   // TODO: convert data from Listener to RISCVDynSubtargetData
   return RISCVDynSubtargetData{};
 }
