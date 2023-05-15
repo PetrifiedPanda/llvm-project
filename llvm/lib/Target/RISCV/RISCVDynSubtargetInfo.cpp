@@ -206,16 +206,16 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"WriteAtomicSTD", VarVal{4, DefaultSchedWrite}},
       {"WriteFAdd16", VarVal{4, DefaultSchedWrite}},
       {"WriteFAdd32", VarVal{4, DefaultSchedWrite}},
-      {"WriteFAdd64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFAdd64", VarVal{4, DefaultSchedWrite}},
       {"WriteFMul16", VarVal{4, DefaultSchedWrite}},
       {"WriteFMul32", VarVal{4, DefaultSchedWrite}},
-      {"WriteFMul64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFMul64", VarVal{4, DefaultSchedWrite}},
       {"WriteFMA16", VarVal{4, DefaultSchedWrite}},
       {"WriteFMA32", VarVal{4, DefaultSchedWrite}},
-      {"WriteFMA64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFMA64", VarVal{4, DefaultSchedWrite}},
       {"WriteFDiv16", VarVal{4, DefaultSchedWrite}},
       {"WriteFDiv32", VarVal{4, DefaultSchedWrite}},
-      {"WriteFDiv64", VarVal{4, DefaultSchedWrite}},      
+      {"WriteFDiv64", VarVal{4, DefaultSchedWrite}},
       {"WriteFSqrt16", VarVal{4, DefaultSchedWrite}},
       {"WriteFSqrt32", VarVal{4, DefaultSchedWrite}},
       {"WriteFSqrt64", VarVal{4, DefaultSchedWrite}},
@@ -240,7 +240,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"WriteFCvtF32ToF16", VarVal{4, DefaultSchedWrite}},
       {"WriteFCvtF16ToF64", VarVal{4, DefaultSchedWrite}},
       {"WriteFCvtF64ToF16", VarVal{4, DefaultSchedWrite}},
-      
+
       {"WriteFClass16", VarVal{4, DefaultSchedWrite}},
       {"WriteFClass32", VarVal{4, DefaultSchedWrite}},
       {"WriteFClass64", VarVal{4, DefaultSchedWrite}},
@@ -260,7 +260,7 @@ class DSLListener final : public DSLGrammarBaseListener {
       {"WriteFMovI32ToF32", VarVal{4, DefaultSchedWrite}},
       {"WriteFMovF64ToI64", VarVal{4, DefaultSchedWrite}},
       {"WriteFMovI64ToF64", VarVal{4, DefaultSchedWrite}},
-      
+
       {"WriteFLD16", VarVal{4, DefaultSchedWrite}},
       {"WriteFLD32", VarVal{4, DefaultSchedWrite}},
       {"WriteFLD64", VarVal{4, DefaultSchedWrite}},
@@ -284,23 +284,9 @@ class DSLListener final : public DSLGrammarBaseListener {
   int64_t CurrentArchIdx = -1;
 
 public:
-  Vec<DSLArchData> getArchData() {
-    Vec<DSLArchData> Res;
-    const size_t Size = CurrentArchIdx + 1;
-    Res.reserve(Size);
-    for (size_t I = 0; I < Size; ++I) {
-      Res.push_back(
-          DSLArchData{std::move(ArchNames[I]), std::move(PrevArchVals[I])});
-    }
-    return Res;
-  }
+  Vec<DSLArchData> getArchData();
 
 private:
-  void
-  enterTranslationUnit(DSLGrammarParser::TranslationUnitContext *TL) override;
-  void
-  exitTranslationUnit(DSLGrammarParser::TranslationUnitContext *TL) override;
-
   void enterArchitectureDefinition(
       DSLGrammarParser::ArchitectureDefinitionContext *AD) override;
   void exitArchitectureDefinition(
@@ -313,10 +299,8 @@ private:
   void exitOverwrite(DSLGrammarParser::OverwriteContext *OW) override;
 
   void enterMemberAccess(DSLGrammarParser::MemberAccessContext *MA) override;
-  void exitMemberAccess(DSLGrammarParser::MemberAccessContext *MA) override;
 
   void enterType(DSLGrammarParser::TypeContext *T) override;
-  void exitType(DSLGrammarParser::TypeContext *T) override;
 
   void enterListType(DSLGrammarParser::ListTypeContext *LT) override;
   void exitListType(DSLGrammarParser::ListTypeContext *LT) override;
@@ -324,16 +308,8 @@ private:
   void enterExpr(DSLGrammarParser::ExprContext *Expr) override;
   void exitExpr(DSLGrammarParser::ExprContext *Expr) override;
 
-  void enterList(DSLGrammarParser::ListContext *List) override;
-  void exitList(DSLGrammarParser::ListContext *List) override;
-
   void enterObj(DSLGrammarParser::ObjContext *Obj) override;
-  void exitObj(DSLGrammarParser::ObjContext *Obj) override;
 
-  void enterEveryRule(antlr4::ParserRuleContext *Rule) override;
-  void exitEveryRule(antlr4::ParserRuleContext *Rule) override;
-
-  void visitTerminal(antlr4::tree::TerminalNode *Term) override;
   void visitErrorNode(antlr4::tree::ErrorNode *Err) override;
 
   const VarVal &getVarVal(const std::string &Spell) const;
@@ -343,17 +319,19 @@ private:
   VarType getCurrVarType() const;
   const std::string *getCurrVarSpell() const;
   VarVal getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const;
-  void writeVal(const std::string& Id, VarVal&& Val);
+  void writeVal(const std::string &Id, VarVal &&Val);
 };
 
-void DSLListener::enterTranslationUnit(
-    DSLGrammarParser::TranslationUnitContext *TL) {
-  // TODO:
-}
-void DSLListener::exitTranslationUnit(
-    DSLGrammarParser::TranslationUnitContext *TL) {
-  // TODO:
-}
+Vec<DSLArchData> DSLListener::getArchData() {
+    Vec<DSLArchData> Res;
+    const size_t Size = CurrentArchIdx + 1;
+    Res.reserve(Size);
+    for (size_t I = 0; I < Size; ++I) {
+      Res.push_back(
+          DSLArchData{std::move(ArchNames[I]), std::move(PrevArchVals[I])});
+    }
+    return Res;
+  }
 
 int64_t DSLListener::getArchIndex(const std::string &Name) const {
   for (int64_t I = 0; static_cast<size_t>(I) < ArchNames.size(); ++I) {
@@ -445,7 +423,7 @@ void DSLListener::enterOverwrite(DSLGrammarParser::OverwriteContext *OW) {
   OverwriteStack.push_back(VarStack.size());
 }
 
-void DSLListener::writeVal(const std::string& Id, VarVal&& Val) {
+void DSLListener::writeVal(const std::string &Id, VarVal &&Val) {
   auto It = CurrentArchVals.find(Id);
   assert(It != CurrentArchVals.end());
   // TODO: Type check
@@ -479,7 +457,6 @@ void DSLListener::enterMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {
     VarStack.push_back(VarInfo{Spell, Val});
   }
 }
-void DSLListener::exitMemberAccess(DSLGrammarParser::MemberAccessContext *MA) {}
 
 // This method assumes that this is always called after enterDefinition has
 // set CurrentDefID
@@ -514,9 +491,6 @@ void DSLListener::enterType(DSLGrammarParser::TypeContext *T) {
   CurrentArchVals.insert(std::make_pair(Info.Id, Info.Val));
   VarStack.push_back(std::move(Info));
 }
-void DSLListener::exitType(DSLGrammarParser::TypeContext *T) {
-  // TODO:
-}
 
 void DSLListener::enterListType(DSLGrammarParser::ListTypeContext *LT) {
   // TODO:
@@ -545,7 +519,6 @@ VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
 }
 
 void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
-  // TODO:
   VarVal &Curr = VarStack.back().Val;
   if (Curr.Type.Kind == VarKind::List) {
     VarStack.push_back(VarInfo{
@@ -553,10 +526,6 @@ void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
   }
 }
 void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
-  // TODO:
-  // TODO: Maybe for every object that is in a list create an Object with empty
-  // ID? Every empty ID would be assumed to be part of a list (Assert that the
-  // Object on the stack before it is a list)
   VarInfo &CurrInfo = VarStack.back();
   VarVal &Curr = CurrInfo.Val;
   if (auto *Int = Expr->INT()) {
@@ -584,8 +553,8 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
     if (It == CurrentArchVals.end()) {
       throw std::runtime_error{"Undefined reference to " + Spell};
     }
-    
-    const VarVal& GotVal = It->second;
+
+    const VarVal &GotVal = It->second;
     const VarType &GotType = GotVal.Type;
 
     if (Curr.Type.Kind == VarKind::Ref) {
@@ -595,24 +564,25 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
             std::to_string(static_cast<size_t>(GotType.Kind))};
       }
       if (GotType.ObjTypeIdx != Curr.Type.ObjTypeIdx) {
-        throw std::runtime_error{"Expected Object Type " +
-                                 std::to_string(Curr.Type.ObjTypeIdx) +
-                                 " but got " + std::to_string(GotType.ObjTypeIdx)};
+        throw std::runtime_error{
+            "Expected Object Type " + std::to_string(Curr.Type.ObjTypeIdx) +
+            " but got " + std::to_string(GotType.ObjTypeIdx)};
       }
 
       Curr = VarVal{GotType.ObjTypeIdx, std::move(Spell)};
     } else {
       if (GotType != Curr.Type) {
-        throw std::runtime_error{"Expected type " + std::to_string(static_cast<size_t>(Curr.Type.Kind)) + " but got " + std::to_string(static_cast<size_t>(GotType.Kind)) + "THIS MAY ALSO HAVE DIFFERENT OBJECT TYPES"};
+        throw std::runtime_error{
+            "Expected type " +
+            std::to_string(static_cast<size_t>(Curr.Type.Kind)) + " but got " +
+            std::to_string(static_cast<size_t>(GotType.Kind)) +
+            "THIS MAY ALSO HAVE DIFFERENT OBJECT TYPES"};
       }
       Curr = GotVal;
     }
-  } else if (auto *Lst = Expr->list()) {
-    // TODO: we may not need this
-  } else if (auto *Obj = Expr->obj()) {
-    // TODO: we may not need this
   }
-
+  
+  // Empty name for list values
   if (VarStack.back().Id == "") {
     assert(VarStack.size() > 1);
     VarVal &List = VarStack[VarStack.size() - 2].Val;
@@ -622,30 +592,10 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
   }
 }
 
-void DSLListener::enterList(DSLGrammarParser::ListContext *List) {
-  // TODO:
-}
-void DSLListener::exitList(DSLGrammarParser::ListContext *List) {
-  // TODO:
-}
-
 void DSLListener::enterObj(DSLGrammarParser::ObjContext *Obj) {
   // TODO: error if current variable is not an Object
 }
-void DSLListener::exitObj(DSLGrammarParser::ObjContext *Obj) {
-  // TODO:
-}
 
-void DSLListener::enterEveryRule(antlr4::ParserRuleContext *Rule) {
-  // TODO:
-}
-void DSLListener::exitEveryRule(antlr4::ParserRuleContext *Rule) {
-  // TODO:
-}
-
-void DSLListener::visitTerminal(antlr4::tree::TerminalNode *Term) {
-  // TODO:
-}
 void DSLListener::visitErrorNode(antlr4::tree::ErrorNode *Err) {
   // TODO:
 }
@@ -662,22 +612,174 @@ Vec<DSLArchData> getDSLArchData(const char *Filename) {
   return Listener.getArchData();
 }
 
+static Vec<std::pair<std::string, VarVal>>
+extractObjsOfType(VarType Type, IdentifierMap<VarVal> &Ids) {
+  Vec<std::pair<std::string, VarVal>> Res;
+  for (auto It = Ids.begin(); It != Ids.end(); /*no incr*/) {
+    if (It->second.Type == Type) {
+      Res.push_back(
+          std::make_pair(std::move(It->first), std::move(It->second)));
+      It = Ids.erase(It);
+    } else {
+      ++It;
+    }
+  }
+  return Res;
+}
+
+const MCProcResourceDesc* findProcResByName(const RISCVDynSubtargetData::Vec<MCProcResourceDesc>& Resources, const std::string& Name) {
+  auto It = std::find_if(Resources.begin(), Resources.end(), [&Name](const MCProcResourceDesc& R) {
+    return R.Name == Name;
+  });
+  return &Resources[It - Resources.begin()];
+}
+
+// Each time a WriteRes or ReadAdvance is processed, we need to either create a
+// new MCSchedClass or find an equivalent one and then write the index in the
+// InstrInfo Table
 RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {
   auto ArchData = getDSLArchData(Filename);
+  // TODO: reserve all tables to a reasonable value (maybe just the size of the
+  // tablegen tables)
   RISCVDynSubtargetData Res;
-  // TODO: convert data from Listener to RISCVDynSubtargetData
-  return RISCVDynSubtargetData{};
+  Res.ArchNames.reserve(ArchData.size());
+  Res.ProcResourceTables.reserve(ArchData.size());
+  Res.SchedClassTables.reserve(ArchData.size());
+  Res.ProcResourceNames.reserve(ArchData.size());
+  Res.ProcResourceSubUnits.reserve(ArchData.size());
+
+  for (auto &Data : ArchData) {
+    Res.ArchNames.push_back(std::move(Data.Name));
+
+    auto ProcResources = extractObjsOfType(VarType{VarKind::Obj, 1}, Data.Vals);
+    // Generate earlier so we know how many MCProcResourceDescs are there
+    auto ProcResGroups = extractObjsOfType(VarType{VarKind::Obj, 5}, Data.Vals);
+    Res.ProcResourceTables.emplace_back();
+    Res.ProcResourceNames.emplace_back();
+    Res.ProcResourceSubUnits.emplace_back();
+
+    auto &CurrProcResourceTable = Res.ProcResourceTables.back();
+    auto &CurrProcResourceNames = Res.ProcResourceNames.back();
+    auto &CurrProcResourceSubUnits = Res.ProcResourceSubUnits.back();
+
+    // Reserve so push_back does not invalidate Small strings
+    // -1 because NoProcResource does not count and string does not need to be
+    // allocated for InvalidUnit
+    CurrProcResourceNames.reserve(ProcResources.size() + ProcResGroups.size() -
+                                  1);
+
+    // Size including "InvalidUnit"
+    CurrProcResourceTable.reserve(ProcResources.size() + ProcResGroups.size());
+    CurrProcResourceTable.push_back(
+        MCProcResourceDesc{"InvalidUnit", 0, 0, 0, 0});
+
+    for (auto &[Name, Val] : ProcResources) {
+      if (Name == "NoProcResource") {
+        // TODO: Special handling (Only AssociatedWrites relevant)
+        continue;
+      }
+      CurrProcResourceNames.emplace_back(std::move(Name));
+      Name = "";
+      assert(Val.Type.Kind == VarKind::Obj);
+      assert(Val.Type.ObjTypeIdx == 1);
+      auto &Map = Val.ObjVal;
+
+      unsigned SuperIdx = 0;
+      const std::string &RefKey = Map["Super"].RefKey;
+      if (RefKey != "") {
+        const MCProcResourceDesc* Super = findProcResByName(CurrProcResourceTable, RefKey);
+        if (Super == &CurrProcResourceTable[CurrProcResourceTable.end() - CurrProcResourceTable.begin()]) {
+          unsigned I = 0;
+          while (ProcResources[I].first == "") {
+            ++I;
+          }
+          
+          if (I == CurrProcResourceTable.size()) {
+            while (ProcResources[I].first != RefKey) {
+              ++I;
+            }
+            SuperIdx = I;
+          } else {
+            assert(I == CurrProcResourceTable.size() - 1);
+            bool GotNoProcResource = false;
+            while (ProcResources[I].first != RefKey) {
+              if (ProcResources[I].first == "NoProcResource") {
+                GotNoProcResource = true;
+              }
+              ++I;
+            }
+            SuperIdx = GotNoProcResource ? I : I - 1;
+          }
+        } else {
+          SuperIdx = Super - &CurrProcResourceTable[0];
+        }
+      }
+
+      const VarVal &MapNumUnits = Map["NumUnits"];
+      if (!MapNumUnits.Initialized) {
+        // TODO: proper error
+        throw std::runtime_error{"NumUnits not initialized"};
+      }
+      const unsigned NumUnits = MapNumUnits.IntVal;
+      assert(static_cast<int64_t>(NumUnits) == MapNumUnits.IntVal);
+      const VarVal &MapBufferSize = Map["BufferSize"];
+      if (!MapBufferSize.Initialized) {
+        // TODO: proper error
+        throw std::runtime_error{"BufferSize not initialized"};
+      }
+      const int BufferSize = MapBufferSize.IntVal;
+      assert(BufferSize == MapBufferSize.IntVal);
+
+      CurrProcResourceTable.push_back(MCProcResourceDesc{
+        CurrProcResourceNames.back().c_str(),
+        NumUnits,
+        SuperIdx,
+        BufferSize,
+        nullptr,
+      });
+
+      // TODO: AssociatedWrites
+    }
+
+    CurrProcResourceSubUnits.reserve(ProcResGroups.size());
+    for (auto &[Name, Val] : ProcResGroups) {
+      CurrProcResourceNames.push_back(std::move(Name));
+      assert(Val.Type.Kind == VarKind::Obj);
+      assert(Val.Type.ObjTypeIdx == 5);
+      auto &Map = Val.ObjVal;
+
+      // TODO: what happens with empty ProcResGroups
+      const auto &Resources = Map["Resources"].LstVal;
+      CurrProcResourceSubUnits.emplace_back();
+      CurrProcResourceSubUnits.back().reserve(Resources.size());
+      unsigned NumUnits = 0;
+      for (const auto &Resource : Resources) {
+        assert(Resource.Type.Kind == VarKind::Ref);
+        const MCProcResourceDesc *It = findProcResByName(CurrProcResourceTable, Resource.RefKey);
+        NumUnits += It->NumUnits;
+        const unsigned Idx = It - &CurrProcResourceTable[0];
+        CurrProcResourceSubUnits.back().push_back(Idx);
+      }
+
+      CurrProcResourceTable.push_back(MCProcResourceDesc{
+          CurrProcResourceNames.back().c_str(),
+          NumUnits,
+          0,  // TODO: ProcResGroup of ProcResGroups?
+          -1, // TODO: is bufferSize always -1?
+          CurrProcResourceSubUnits.back().data(),
+      });
+      // TODO: AssociatedWrites
+    }
+  }
+  return Res;
 }
 
 static MCSchedModel getDynSubtargetSchedModel(const RISCVDynSubtargetData &SD,
                                               size_t ArchIdx) {
   static constexpr unsigned int UINT_PLACEHOLDER = -1;
   static constexpr bool BOOL_PLACEHOLDER = false;
-
-  const SmallVector<MCProcResourceDesc> &ProcResourceTable =
-      SD.ProcResourceTables[ArchIdx];
-  const SmallVector<MCSchedClassDesc> &SchedClassTable =
-      SD.SchedClassTables[ArchIdx];
+  const auto &ProcResourceTable = SD.ProcResourceTables[ArchIdx];
+  const auto &SchedClassTable = SD.SchedClassTables[ArchIdx];
   const unsigned NumProcResourceKinds =
       static_cast<unsigned>(ProcResourceTable.size());
   const unsigned NumSchedClasses =

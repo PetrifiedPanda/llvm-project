@@ -10,20 +10,28 @@
 namespace llvm {
 
 struct RISCVDynSubtargetData {
-  SmallVector<std::string> ArchNames;
+  template <typename T>
+  using Vec = std::vector<T>;
+  Vec<std::string> ArchNames;
   // Data for SubtargetInfo
-  SmallVector<SubtargetFeatureKV> FeatureKV;
-  SmallVector<SubtargetSubTypeKV> SubTypeKV;
+  Vec<SubtargetFeatureKV> FeatureKV;
+  Vec<SubtargetSubTypeKV> SubTypeKV;
 
-  SmallVector<MCWriteProcResEntry> WriteProcResTable;
-  SmallVector<MCWriteLatencyEntry> WriteLatencyTable;
-  SmallVector<MCReadAdvanceEntry> ReadAdvanceTable;
+  Vec<MCWriteProcResEntry> WriteProcResTable;
+  Vec<MCWriteLatencyEntry> WriteLatencyTable;
+  Vec<MCReadAdvanceEntry> ReadAdvanceTable;
 
   // Data for each schedModel
-  SmallVector<SmallVector<MCProcResourceDesc>> ProcResourceTables;
-  SmallVector<SmallVector<MCSchedClassDesc>> SchedClassTables;
 
-  SmallVector<MCSchedModel> SchedModels;
+  // As the names are const char* in MCProcResourceDesc, they need to be allocated somewhere
+  // This is a vector of vectors, so we can predetermine each vectors size (number of ProcResources) and no reallocation takes place, which might invalidate the char pointers if the strings are small
+  Vec<Vec<std::string>> ProcResourceNames;
+  // Holds the Subunit indices for the ProcResouces
+  Vec<Vec<Vec<unsigned>>> ProcResourceSubUnits;
+  Vec<Vec<MCProcResourceDesc>> ProcResourceTables;
+  Vec<Vec<MCSchedClassDesc>> SchedClassTables;
+
+  Vec<MCSchedModel> SchedModels;
 
   RISCVDynSubtargetData() = default;
   RISCVDynSubtargetData(const RISCVDynSubtargetData &) = delete;
