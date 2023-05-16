@@ -2,6 +2,7 @@
 #define RISCV_DYN_SUBTARGET_H
 
 #include "llvm/MC/MCSchedule.h"
+#include "llvm/MC/MCInstrDesc.h"
 
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 
@@ -10,8 +11,6 @@
 namespace llvm {
 
 struct RISCVDynSubtargetData {
-  template <typename T>
-  using Vec = std::vector<T>;
   Vec<std::string> ArchNames;
   // Data for SubtargetInfo
   Vec<SubtargetFeatureKV> FeatureKV;
@@ -32,6 +31,8 @@ struct RISCVDynSubtargetData {
   Vec<Vec<MCSchedClassDesc>> SchedClassTables;
 
   Vec<MCSchedModel> SchedModels;
+
+  Vec<MCInstrDesc> InstrDescs;
 
   RISCVDynSubtargetData() = default;
   RISCVDynSubtargetData(const RISCVDynSubtargetData &) = delete;

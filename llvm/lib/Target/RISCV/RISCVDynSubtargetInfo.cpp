@@ -318,20 +318,20 @@ private:
 
   VarType getCurrVarType() const;
   const std::string *getCurrVarSpell() const;
-  VarVal getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const;
+  static VarVal getDefaultValue(VarKind Kind, size_t ObjTypeIdx);
   void writeVal(const std::string &Id, VarVal &&Val);
 };
 
 Vec<DSLArchData> DSLListener::getArchData() {
-    Vec<DSLArchData> Res;
-    const size_t Size = CurrentArchIdx + 1;
-    Res.reserve(Size);
-    for (size_t I = 0; I < Size; ++I) {
-      Res.push_back(
-          DSLArchData{std::move(ArchNames[I]), std::move(PrevArchVals[I])});
-    }
-    return Res;
+  Vec<DSLArchData> Res;
+  const size_t Size = CurrentArchIdx + 1;
+  Res.reserve(Size);
+  for (size_t I = 0; I < Size; ++I) {
+    Res.push_back(
+        DSLArchData{std::move(ArchNames[I]), std::move(PrevArchVals[I])});
   }
+  return Res;
+}
 
 int64_t DSLListener::getArchIndex(const std::string &Name) const {
   for (int64_t I = 0; static_cast<size_t>(I) < ArchNames.size(); ++I) {
@@ -499,10 +499,10 @@ void DSLListener::exitListType(DSLGrammarParser::ListTypeContext *LT) {
   // TODO:
 }
 
-VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
+VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) {
   switch (Kind) {
   case VarKind::Invalid:
-    llvm_unreachable("");
+    llvm_unreachable("Tried to get default for invalid value");
   case VarKind::Bool:
   case VarKind::Int:
     return VarVal::createUninitialized(VarType{Kind});
@@ -514,8 +514,8 @@ VarVal DSLListener::getDefaultValue(VarKind Kind, size_t ObjTypeIdx) const {
   case VarKind::Ref:
     return VarVal{ObjTypeIdx, ""};
   }
-
-  assert(false);
+  
+  llvm_unreachable("Unhandled VarKind");
 }
 
 void DSLListener::enterExpr(DSLGrammarParser::ExprContext *Expr) {
@@ -581,7 +581,7 @@ void DSLListener::exitExpr(DSLGrammarParser::ExprContext *Expr) {
       Curr = GotVal;
     }
   }
-  
+
   // Empty name for list values
   if (VarStack.back().Id == "") {
     assert(VarStack.size() > 1);
@@ -612,6 +612,7 @@ Vec<DSLArchData> getDSLArchData(const char *Filename) {
   return Listener.getArchData();
 }
 
+// TODO: maybe make this just straight up return the ObjVal
 static Vec<std::pair<std::string, VarVal>>
 extractObjsOfType(VarType Type, IdentifierMap<VarVal> &Ids) {
   Vec<std::pair<std::string, VarVal>> Res;
@@ -627,11 +628,128 @@ extractObjsOfType(VarType Type, IdentifierMap<VarVal> &Ids) {
   return Res;
 }
 
-const MCProcResourceDesc* findProcResByName(const RISCVDynSubtargetData::Vec<MCProcResourceDesc>& Resources, const std::string& Name) {
-  auto It = std::find_if(Resources.begin(), Resources.end(), [&Name](const MCProcResourceDesc& R) {
-    return R.Name == Name;
-  });
+const MCProcResourceDesc *
+findProcResByName(const Vec<MCProcResourceDesc> &Resources,
+                  const std::string &Name) {
+  auto It = std::find_if(
+      Resources.begin(), Resources.end(),
+      [&Name](const MCProcResourceDesc &R) { return R.Name == Name; });
   return &Resources[It - Resources.begin()];
+}
+
+static void
+processProcResources(Vec<std::pair<std::string, VarVal>> &ProcResources,
+                     Vec<std::string> &CurrProcResourceNames,
+                     Vec<MCProcResourceDesc> &CurrProcResourceTable) {
+  CurrProcResourceTable.push_back(
+      MCProcResourceDesc{"InvalidUnit", 0, 0, 0, 0});
+
+  for (auto &[Name, Val] : ProcResources) {
+    if (Name == "NoProcResource") {
+      // TODO: Special handling (Only AssociatedWrites relevant)
+      continue;
+    }
+    CurrProcResourceNames.emplace_back(std::move(Name));
+    Name = "";
+    assert(Val.Type.Kind == VarKind::Obj);
+    assert(Val.Type.ObjTypeIdx == 1);
+    auto &Map = Val.ObjVal;
+
+    unsigned SuperIdx = 0;
+    const std::string &RefKey = Map["Super"].RefKey;
+    if (RefKey != "") {
+      const MCProcResourceDesc *Super =
+          findProcResByName(CurrProcResourceTable, RefKey);
+      if (Super == &CurrProcResourceTable[CurrProcResourceTable.end() -
+                                          CurrProcResourceTable.begin()]) {
+        unsigned I = 0;
+        while (ProcResources[I].first == "") {
+          ++I;
+        }
+
+        if (I == CurrProcResourceTable.size()) {
+          while (ProcResources[I].first != RefKey) {
+            ++I;
+          }
+          SuperIdx = I;
+        } else {
+          assert(I == CurrProcResourceTable.size() - 1);
+          bool GotNoProcResource = false;
+          while (ProcResources[I].first != RefKey) {
+            if (ProcResources[I].first == "NoProcResource") {
+              GotNoProcResource = true;
+            }
+            ++I;
+          }
+          SuperIdx = GotNoProcResource ? I : I - 1;
+        }
+      } else {
+        SuperIdx = Super - &CurrProcResourceTable[0];
+      }
+    }
+
+    const VarVal &MapNumUnits = Map["NumUnits"];
+    if (!MapNumUnits.Initialized) {
+      // TODO: proper error
+      throw std::runtime_error{"NumUnits not initialized"};
+    }
+    const unsigned NumUnits = MapNumUnits.IntVal;
+    assert(static_cast<int64_t>(NumUnits) == MapNumUnits.IntVal);
+    const VarVal &MapBufferSize = Map["BufferSize"];
+    if (!MapBufferSize.Initialized) {
+      // TODO: proper error
+      throw std::runtime_error{"BufferSize not initialized"};
+    }
+    const int BufferSize = MapBufferSize.IntVal;
+    assert(BufferSize == MapBufferSize.IntVal);
+
+    CurrProcResourceTable.push_back(MCProcResourceDesc{
+        CurrProcResourceNames.back().c_str(),
+        NumUnits,
+        SuperIdx,
+        BufferSize,
+        nullptr,
+    });
+
+    // TODO: AssociatedWrites
+  }
+}
+
+static void
+processProcResGroups(Vec<std::pair<std::string, VarVal>> &ProcResGroups,
+                     Vec<std::string> &CurrProcResourceNames,
+                     Vec<Vec<unsigned>> &CurrProcResourceSubUnits,
+                     Vec<MCProcResourceDesc> &CurrProcResourceTable) {
+  CurrProcResourceSubUnits.reserve(ProcResGroups.size());
+  for (auto &[Name, Val] : ProcResGroups) {
+    CurrProcResourceNames.push_back(std::move(Name));
+    assert(Val.Type.Kind == VarKind::Obj);
+    assert(Val.Type.ObjTypeIdx == 5);
+    auto &Map = Val.ObjVal;
+
+    // TODO: what happens with empty ProcResGroups
+    const auto &Resources = Map["Resources"].LstVal;
+    CurrProcResourceSubUnits.emplace_back();
+    CurrProcResourceSubUnits.back().reserve(Resources.size());
+    unsigned NumUnits = 0;
+    for (const auto &Resource : Resources) {
+      assert(Resource.Type.Kind == VarKind::Ref);
+      const MCProcResourceDesc *It =
+          findProcResByName(CurrProcResourceTable, Resource.RefKey);
+      NumUnits += It->NumUnits;
+      const unsigned Idx = It - &CurrProcResourceTable[0];
+      CurrProcResourceSubUnits.back().push_back(Idx);
+    }
+
+    CurrProcResourceTable.push_back(MCProcResourceDesc{
+        CurrProcResourceNames.back().c_str(),
+        NumUnits,
+        0,  // TODO: ProcResGroup of ProcResGroups?
+        -1, // TODO: is bufferSize always -1?
+        CurrProcResourceSubUnits.back().data(),
+    });
+    // TODO: AssociatedWrites
+  }
 }
 
 // Each time a WriteRes or ReadAdvance is processed, we need to either create a
@@ -647,12 +765,14 @@ RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {
   Res.SchedClassTables.reserve(ArchData.size());
   Res.ProcResourceNames.reserve(ArchData.size());
   Res.ProcResourceSubUnits.reserve(ArchData.size());
+  
+  // TODO: copy InstrDescs from TableGen
 
   for (auto &Data : ArchData) {
     Res.ArchNames.push_back(std::move(Data.Name));
 
     auto ProcResources = extractObjsOfType(VarType{VarKind::Obj, 1}, Data.Vals);
-    // Generate earlier so we know how many MCProcResourceDescs are there
+    // Generate earlier so we can allocate the exact number of MCProcResourceDescsourceDescs
     auto ProcResGroups = extractObjsOfType(VarType{VarKind::Obj, 5}, Data.Vals);
     Res.ProcResourceTables.emplace_back();
     Res.ProcResourceNames.emplace_back();
@@ -670,105 +790,15 @@ RISCVDynSubtargetData getDynSubtargetData(const char *Filename) {
 
     // Size including "InvalidUnit"
     CurrProcResourceTable.reserve(ProcResources.size() + ProcResGroups.size());
-    CurrProcResourceTable.push_back(
-        MCProcResourceDesc{"InvalidUnit", 0, 0, 0, 0});
 
-    for (auto &[Name, Val] : ProcResources) {
-      if (Name == "NoProcResource") {
-        // TODO: Special handling (Only AssociatedWrites relevant)
-        continue;
-      }
-      CurrProcResourceNames.emplace_back(std::move(Name));
-      Name = "";
-      assert(Val.Type.Kind == VarKind::Obj);
-      assert(Val.Type.ObjTypeIdx == 1);
-      auto &Map = Val.ObjVal;
+    processProcResources(ProcResources, CurrProcResourceNames,
+                         CurrProcResourceTable);
+    processProcResGroups(ProcResGroups, CurrProcResourceNames,
+                         CurrProcResourceSubUnits, CurrProcResourceTable);
 
-      unsigned SuperIdx = 0;
-      const std::string &RefKey = Map["Super"].RefKey;
-      if (RefKey != "") {
-        const MCProcResourceDesc* Super = findProcResByName(CurrProcResourceTable, RefKey);
-        if (Super == &CurrProcResourceTable[CurrProcResourceTable.end() - CurrProcResourceTable.begin()]) {
-          unsigned I = 0;
-          while (ProcResources[I].first == "") {
-            ++I;
-          }
-          
-          if (I == CurrProcResourceTable.size()) {
-            while (ProcResources[I].first != RefKey) {
-              ++I;
-            }
-            SuperIdx = I;
-          } else {
-            assert(I == CurrProcResourceTable.size() - 1);
-            bool GotNoProcResource = false;
-            while (ProcResources[I].first != RefKey) {
-              if (ProcResources[I].first == "NoProcResource") {
-                GotNoProcResource = true;
-              }
-              ++I;
-            }
-            SuperIdx = GotNoProcResource ? I : I - 1;
-          }
-        } else {
-          SuperIdx = Super - &CurrProcResourceTable[0];
-        }
-      }
-
-      const VarVal &MapNumUnits = Map["NumUnits"];
-      if (!MapNumUnits.Initialized) {
-        // TODO: proper error
-        throw std::runtime_error{"NumUnits not initialized"};
-      }
-      const unsigned NumUnits = MapNumUnits.IntVal;
-      assert(static_cast<int64_t>(NumUnits) == MapNumUnits.IntVal);
-      const VarVal &MapBufferSize = Map["BufferSize"];
-      if (!MapBufferSize.Initialized) {
-        // TODO: proper error
-        throw std::runtime_error{"BufferSize not initialized"};
-      }
-      const int BufferSize = MapBufferSize.IntVal;
-      assert(BufferSize == MapBufferSize.IntVal);
-
-      CurrProcResourceTable.push_back(MCProcResourceDesc{
-        CurrProcResourceNames.back().c_str(),
-        NumUnits,
-        SuperIdx,
-        BufferSize,
-        nullptr,
-      });
-
-      // TODO: AssociatedWrites
-    }
-
-    CurrProcResourceSubUnits.reserve(ProcResGroups.size());
-    for (auto &[Name, Val] : ProcResGroups) {
-      CurrProcResourceNames.push_back(std::move(Name));
-      assert(Val.Type.Kind == VarKind::Obj);
-      assert(Val.Type.ObjTypeIdx == 5);
-      auto &Map = Val.ObjVal;
-
-      // TODO: what happens with empty ProcResGroups
-      const auto &Resources = Map["Resources"].LstVal;
-      CurrProcResourceSubUnits.emplace_back();
-      CurrProcResourceSubUnits.back().reserve(Resources.size());
-      unsigned NumUnits = 0;
-      for (const auto &Resource : Resources) {
-        assert(Resource.Type.Kind == VarKind::Ref);
-        const MCProcResourceDesc *It = findProcResByName(CurrProcResourceTable, Resource.RefKey);
-        NumUnits += It->NumUnits;
-        const unsigned Idx = It - &CurrProcResourceTable[0];
-        CurrProcResourceSubUnits.back().push_back(Idx);
-      }
-
-      CurrProcResourceTable.push_back(MCProcResourceDesc{
-          CurrProcResourceNames.back().c_str(),
-          NumUnits,
-          0,  // TODO: ProcResGroup of ProcResGroups?
-          -1, // TODO: is bufferSize always -1?
-          CurrProcResourceSubUnits.back().data(),
-      });
-      // TODO: AssociatedWrites
+    auto SchedReads = extractObjsOfType(VarType{VarKind::Obj, 6}, Data.Vals);
+    for (auto &[Name, SchedRead] : SchedReads) {
+      // TODO:
     }
   }
   return Res;
